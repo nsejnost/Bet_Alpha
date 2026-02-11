@@ -1,13 +1,5 @@
-run = "pip install -r requirements.txt && python3 app.py"
 entrypoint = "app.py"
-language = "python3"
-
-[nix]
-channel = "stable-22_11"
-
-[nix.packages]
-python = "python310"
-pip = "python310Packages.pip"
+run = "python3 app.py"
 
 [deployment]
 run = ["python3", "app.py"]
