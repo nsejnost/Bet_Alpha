@@ -9,6 +9,8 @@ CbbMarketVsModel_Totals and CbbMarketVsModel_Spreads tables
 via a browser-based interface.
 """
 
+import json
+import math
 import os
 import sys
 import time
@@ -17,7 +19,7 @@ from datetime import datetime, timedelta
 
 import numpy as np
 import pandas as pd
-from flask import Flask, render_template, jsonify
+from flask import Flask, render_template, Response
 
 # Import all needed functions and constants from the existing main.py
 from main import (
@@ -389,6 +391,39 @@ def run_pipeline():
 
 
 # ---------------------------------------------------------------------------
+# JSON helpers — NaN / Inf are not valid JSON
+# ---------------------------------------------------------------------------
+
+
+def _sanitize_value(v):
+    """Convert NaN, Inf, and numpy scalars to JSON-safe Python types."""
+    if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+        return None
+    if isinstance(v, (np.integer,)):
+        return int(v)
+    if isinstance(v, (np.floating,)):
+        f = float(v)
+        return None if math.isnan(f) or math.isinf(f) else f
+    if isinstance(v, (np.bool_,)):
+        return bool(v)
+    return v
+
+
+def _sanitize_records(records: list[dict]) -> list[dict]:
+    """Walk a list of dicts and replace NaN/Inf with None."""
+    return [{k: _sanitize_value(v) for k, v in row.items()} for row in records]
+
+
+def _json_response(payload: dict, status: int = 200) -> Response:
+    """Return a Flask Response with properly serialized JSON."""
+    return Response(
+        json.dumps(payload, default=str),
+        status=status,
+        mimetype="application/json",
+    )
+
+
+# ---------------------------------------------------------------------------
 # Flask routes
 # ---------------------------------------------------------------------------
 
@@ -405,20 +440,14 @@ def api_data():
 
     now = time.time()
     if _cache["ts"] and (now - _cache["ts"]) < CACHE_TTL_SECONDS:
-        return jsonify(_cache["payload"])
+        return _json_response(_cache["payload"])
 
     try:
         totals_df, spreads_df, stats = run_pipeline()
 
-        # Replace NaN with None for valid JSON
-        totals_records = (
-            totals_df.where(pd.notnull(totals_df), None)
-            .to_dict(orient="records")
-        )
-        spreads_records = (
-            spreads_df.where(pd.notnull(spreads_df), None)
-            .to_dict(orient="records")
-        )
+        # Convert to records then scrub NaN/Inf → None for valid JSON
+        totals_records = _sanitize_records(totals_df.to_dict(orient="records"))
+        spreads_records = _sanitize_records(spreads_df.to_dict(orient="records"))
 
         payload = {
             "success": True,
@@ -435,18 +464,16 @@ def api_data():
         }
 
         _cache = {"payload": payload, "ts": now}
-        return jsonify(payload)
+        return _json_response(payload)
 
     except Exception as e:
-        return (
-            jsonify(
-                {
-                    "success": False,
-                    "error": str(e),
-                    "traceback": traceback.format_exc(),
-                }
-            ),
-            500,
+        return _json_response(
+            {
+                "success": False,
+                "error": str(e),
+                "traceback": traceback.format_exc(),
+            },
+            status=500,
         )
 
 
