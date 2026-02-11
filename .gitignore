@@ -3,3 +3,9 @@ __pycache__/
 CBB_Model_Inputs_fixed.xlsx
 *.csv
 CbbMarketVsModel.xlsx
+.pythonlibs/
+*.egg-info/
+dist/
+build/
+.env
+venv/
