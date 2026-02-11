@@ -89,49 +89,72 @@ SPREADS_OUTPUT_COLUMNS = [
 
 def fix_ios_excel(filepath: str) -> str:
     """Fix xlsx files created by iOS Excel that have invalid font family values.
-    
+
     iOS Excel sometimes writes font family values > 14, which crashes openpyxl.
     This function repairs the styles.xml inside the xlsx archive.
     Returns path to fixed file (or original if no fix needed).
     """
+    # Validate that the source workbook is a valid zip/xlsx
+    if not os.path.isfile(filepath):
+        raise FileNotFoundError(f"Workbook not found: {filepath}")
+    try:
+        with zipfile.ZipFile(filepath, 'r') as zf:
+            zf.testzip()  # verify integrity
+    except (zipfile.BadZipFile, Exception) as e:
+        raise RuntimeError(
+            f"Source workbook '{filepath}' is corrupt or incomplete ({e}). "
+            "Please re-upload the file."
+        )
+
     try:
         with zipfile.ZipFile(filepath, 'r') as zf:
             if 'xl/styles.xml' not in zf.namelist():
                 return filepath
             styles_data = zf.read('xl/styles.xml').decode('utf-8')
-            
+
         # Check if fix is needed
         needs_fix = False
         for m in re.finditer(r'val="(\d+)"', styles_data):
             if int(m.group(1)) > 14:
                 needs_fix = True
                 break
-        
+
         if not needs_fix:
             return filepath
-        
+
         print("Detected iOS Excel font compatibility issue - applying fix...")
-        
+
         # Create fixed copy in working directory
         basename = os.path.basename(filepath).replace('.xlsx', '_fixed.xlsx')
         fixed_path = os.path.join(os.getcwd(), basename)
-        
+
+        # Remove any stale/corrupt fixed file from a previous interrupted run
+        if os.path.exists(fixed_path):
+            os.remove(fixed_path)
+
         def fix_family(m):
             val = int(m.group(1))
             if val > 14:
                 return 'val="2"'
             return m.group(0)
-        
+
         fixed_styles = re.sub(r'val="(\d+)"', fix_family, styles_data)
-        
+
+        # Write to a temp file first, then rename for atomicity
+        tmp_path = fixed_path + '.tmp'
         with zipfile.ZipFile(filepath, 'r') as zin:
-            with zipfile.ZipFile(fixed_path, 'w') as zout:
+            with zipfile.ZipFile(tmp_path, 'w') as zout:
                 for item in zin.infolist():
                     if item.filename == 'xl/styles.xml':
                         zout.writestr(item, fixed_styles.encode('utf-8'))
                     else:
                         zout.writestr(item, zin.read(item.filename))
-        
+
+        # Verify the written file before committing
+        with zipfile.ZipFile(tmp_path, 'r') as zf:
+            zf.testzip()
+        os.replace(tmp_path, fixed_path)
+
         return fixed_path
     except Exception as e:
         print(f"Warning: Could not check/fix xlsx compatibility: {e}")
