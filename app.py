@@ -134,6 +134,7 @@ def run_pipeline():
     kp_indexed = kp.set_index("Team_key")
 
     rows: list[dict] = []
+    unmatched: list[dict] = []
     missing_kp = 0
     missing_hasla = 0
     missing_barttorvik = 0
@@ -399,8 +400,30 @@ def run_pipeline():
 
             rows.append(out)
 
-        except Exception:
+        except Exception as exc:
             missing_kp += 1
+            # Capture details for unmatched games display
+            dt_utc_um = _parse_iso_utc(g.get("CommenceTimeUTC", ""))
+            um_date = ""
+            um_time = ""
+            if dt_utc_um and et_tz:
+                dt_et_um = dt_utc_um.astimezone(et_tz)
+                um_date = dt_et_um.strftime("%Y-%m-%d")
+                um_time = dt_et_um.strftime("%I:%M %p ET")
+            elif dt_utc_um:
+                um_date = dt_utc_um.strftime("%Y-%m-%d")
+                um_time = dt_utc_um.strftime("%H:%M UTC")
+            unmatched.append({
+                "Game_Date": um_date,
+                "Game_Time": um_time,
+                "TeamA": g.get("TeamA_raw", ""),
+                "TeamB": g.get("TeamB_raw", ""),
+                "TeamA_key": g.get("TeamA_key", ""),
+                "TeamB_key": g.get("TeamB_key", ""),
+                "ClosingTotal": g.get("ClosingTotal", None),
+                "ClosingSpread": g.get("ClosingSpread", None),
+                "Error": str(exc),
+            })
             continue
 
     stats["missing_kenpom"] = missing_kp
@@ -431,7 +454,8 @@ def run_pipeline():
     spreads_df = df[spreads_cols].copy().replace([np.inf, -np.inf], np.nan)
 
     stats["total_games"] = int(len(df))
-    return totals_df, spreads_df, stats
+    stats["unmatched_kenpom"] = int(len(unmatched))
+    return totals_df, spreads_df, stats, unmatched
 
 
 # ---------------------------------------------------------------------------
@@ -487,11 +511,12 @@ def api_data():
         return _json_response(_cache["payload"])
 
     try:
-        totals_df, spreads_df, stats = run_pipeline()
+        totals_df, spreads_df, stats, unmatched = run_pipeline()
 
         # Convert to records then scrub NaN/Inf → None for valid JSON
         totals_records = _sanitize_records(totals_df.to_dict(orient="records"))
         spreads_records = _sanitize_records(spreads_df.to_dict(orient="records"))
+        unmatched_records = _sanitize_records(unmatched)
 
         payload = {
             "success": True,
@@ -502,6 +527,12 @@ def api_data():
             "spreads": {
                 "columns": list(spreads_df.columns),
                 "data": spreads_records,
+            },
+            "unmatched": {
+                "columns": ["Game_Date", "Game_Time", "TeamA", "TeamB",
+                            "TeamA_key", "TeamB_key",
+                            "ClosingTotal", "ClosingSpread", "Error"],
+                "data": unmatched_records,
             },
             "stats": stats,
             "updated_at": datetime.now().strftime("%Y-%m-%d %I:%M:%S %p"),

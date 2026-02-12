@@ -175,6 +175,22 @@
             color: #e94560;
             border-bottom-color: #e94560;
         }
+        .unmatched-badge {
+            background: #e94560;
+            color: #fff;
+            font-size: .7rem;
+            font-weight: 700;
+            padding: 1px 6px;
+            border-radius: 10px;
+            margin-left: 4px;
+            vertical-align: middle;
+        }
+        td.col-error {
+            color: #c0392b;
+            font-size: .78rem;
+            white-space: normal;
+            max-width: 320px;
+        }
 
         /* ------------------------------------------------------------------ */
         /* Table container                                                    */
@@ -476,6 +492,9 @@
         <span class="stat-item">Barttorvik matchups: <span class="stat-val" id="statBart">--</span> <span class="stat-source" id="statBartSource"></span></span>
         <span class="stat-item">Market games: <span class="stat-val" id="statMarket">--</span></span>
         <span class="stat-item">Matched: <span class="stat-val" id="statTotal">--</span></span>
+        <span class="stat-item">Unmatched: <span class="stat-val" id="statUnmatched">--</span></span>
+        <span class="stat-item">Hasla miss: <span class="stat-val" id="statHaslaMiss">--</span></span>
+        <span class="stat-item">Bart miss: <span class="stat-val" id="statBartMiss">--</span></span>
         <span class="updated-at" id="updatedAt"></span>
     </div>
 
@@ -529,6 +548,7 @@
     <div class="tab-bar">
         <button class="tab-btn active" data-tab="totals" onclick="switchTab('totals')">Totals</button>
         <button class="tab-btn" data-tab="spreads" onclick="switchTab('spreads')">Spreads</button>
+        <button class="tab-btn" data-tab="unmatched" onclick="switchTab('unmatched')">Unmatched <span id="unmatchedBadge" class="unmatched-badge" style="display:none;"></span></button>
     </div>
 
     <!-- Loading state (hidden by default — not shown on initial load) -->
@@ -562,6 +582,17 @@
                 <tr class="filter-row" id="spreadsFilterRow"></tr>
             </thead>
             <tbody id="spreadsBody"></tbody>
+        </table>
+    </div>
+    <div class="table-wrapper" id="unmatchedWrapper" hidden>
+        <div id="unmatchedEmpty" class="welcome-msg" style="display:none;">
+            All market games matched successfully.
+        </div>
+        <table class="data-table" id="unmatchedTable" style="display:none;">
+            <thead>
+                <tr id="unmatchedHead"></tr>
+            </thead>
+            <tbody id="unmatchedBody"></tbody>
         </table>
     </div>
 
@@ -774,6 +805,7 @@ async function fetchData() {
     document.getElementById("welcomeMsg").style.display = "none";
     document.getElementById("totalsWrapper").hidden = true;
     document.getElementById("spreadsWrapper").hidden = true;
+    document.getElementById("unmatchedWrapper").hidden = true;
 
     try {
         const resp = await fetch("/api/data");
@@ -788,6 +820,7 @@ async function fetchData() {
         updateStats(json.stats, json.updated_at);
         renderTable("totals", json.totals.columns, json.totals.data);
         renderTable("spreads", json.spreads.columns, json.spreads.data);
+        renderUnmatched(json.unmatched);
         document.getElementById("loading").style.display = "none";
         switchTab(currentTab);
     } catch (err) {
@@ -817,6 +850,9 @@ function updateStats(stats, updatedAt) {
     srcBadge("statBartSource", stats.barttorvik_source);
     document.getElementById("statMarket").textContent = stats.market_matchups;
     document.getElementById("statTotal").textContent = stats.total_games;
+    document.getElementById("statUnmatched").textContent = stats.unmatched_kenpom != null ? stats.unmatched_kenpom : "--";
+    document.getElementById("statHaslaMiss").textContent = stats.missing_hasla != null ? stats.missing_hasla : "--";
+    document.getElementById("statBartMiss").textContent = stats.missing_barttorvik != null ? stats.missing_barttorvik : "--";
     document.getElementById("updatedAt").textContent = updatedAt ? ("Updated: " + updatedAt) : "";
 }
 
@@ -1116,6 +1152,83 @@ function renderTable(name, columns, data, bodyOnly) {
     });
 }
 
+/* ====================================================================== */
+/* Render unmatched games table                                           */
+/* ====================================================================== */
+const UNMATCHED_COLS = [
+    "Game_Date", "Game_Time", "TeamA", "TeamB",
+    "TeamA_key", "TeamB_key",
+    "ClosingTotal", "ClosingSpread", "Error",
+];
+const UNMATCHED_LABELS = {
+    Game_Date: "Date",
+    Game_Time: "Time",
+    TeamA: "Away",
+    TeamB: "Home",
+    TeamA_key: "Away (key)",
+    TeamB_key: "Home (key)",
+    ClosingTotal: "Market Total",
+    ClosingSpread: "Market Spread",
+    Error: "Error",
+};
+
+function renderUnmatched(unmatched) {
+    const badge = document.getElementById("unmatchedBadge");
+    const emptyMsg = document.getElementById("unmatchedEmpty");
+    const table = document.getElementById("unmatchedTable");
+    const thead = document.getElementById("unmatchedHead");
+    const tbody = document.getElementById("unmatchedBody");
+
+    const rows = (unmatched && unmatched.data) ? unmatched.data : [];
+
+    /* Update badge */
+    if (rows.length > 0) {
+        badge.textContent = rows.length;
+        badge.style.display = "inline";
+    } else {
+        badge.style.display = "none";
+    }
+
+    /* Toggle empty message vs table */
+    if (rows.length === 0) {
+        emptyMsg.style.display = "block";
+        table.style.display = "none";
+        return;
+    }
+    emptyMsg.style.display = "none";
+    table.style.display = "";
+
+    /* Header */
+    thead.innerHTML = "";
+    UNMATCHED_COLS.forEach(col => {
+        const th = document.createElement("th");
+        th.textContent = UNMATCHED_LABELS[col] || col;
+        thead.appendChild(th);
+    });
+
+    /* Body */
+    tbody.innerHTML = "";
+    rows.forEach(row => {
+        const tr = document.createElement("tr");
+        UNMATCHED_COLS.forEach(col => {
+            const td = document.createElement("td");
+            const val = row[col];
+            if (val === null || val === undefined || val === "") {
+                td.textContent = "--";
+            } else if (typeof val === "number") {
+                td.textContent = formatNum(val);
+                td.className = "col-num";
+            } else {
+                td.textContent = val;
+            }
+            if (col === "Error") td.className = "col-error";
+            if (col === "TeamA" || col === "TeamB") td.className = "col-team";
+            tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+    });
+}
+
 function formatNum(v) {
     if (typeof v !== "number") return v;
     return Number.isInteger(v) ? v.toString() : v.toFixed(2);
@@ -1166,6 +1279,7 @@ function switchTab(tab) {
     });
     document.getElementById("totalsWrapper").hidden = (tab !== "totals");
     document.getElementById("spreadsWrapper").hidden = (tab !== "spreads");
+    document.getElementById("unmatchedWrapper").hidden = (tab !== "unmatched");
 }
 
 /* ====================================================================== */
