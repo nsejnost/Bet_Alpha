@@ -2166,7 +2166,7 @@ def load_barttorvik(workbook: str, sheet: str) -> pd.DataFrame:
             home_team = " ".join(home_tokens)
 
             # Parse T-Rank Line: "Michigan -1.9 73-71 (58%)"
-            trank_match = re.match(r"(.+?)\s+(-?\d+\.?\d*)\s+(\d+)-(\d+)\s+\(\d+%\)", trank_raw)
+            trank_match = re.match(r"(.+?)\s+(-?\d+\.?\d*),?\s+(\d+)-(\d+)\s+\(\d+%\)", trank_raw)
             if not trank_match:
                 continue
 

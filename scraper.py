@@ -511,11 +511,15 @@ def scrape_barttorvik() -> pd.DataFrame:
     if "Matchup" not in b.columns or "T-Rank Line" not in b.columns:
         matchup_col = None
         trank_col = None
-        trank_re = re.compile(r".+\s+-?\d+\.?\d*\s+\d+-\d+\s+\(\d+%\)")
+        # Matchup pattern: "250 Team at 197 Team" — require a leading rank
+        # number to avoid false positives on conference columns like "Horz at Horz".
+        matchup_re = re.compile(r"\d+\s+.+\s+(?:at|vs)\s+\d+\s+")
+        # T-Rank Line: "Team -6.7, 76-69 (74%)" — comma after spread is optional
+        trank_re = re.compile(r".+\s+-?\d+\.?\d*,?\s+\d+-\d+\s+\(\d+%\)")
         for _, sample_row in b.head(min(50, len(b))).iterrows():
             for col in b.columns:
                 val = str(sample_row[col]).strip()
-                if matchup_col is None and (" at " in val or " vs " in val):
+                if matchup_col is None and matchup_re.search(val):
                     matchup_col = col
                 if trank_col is None and trank_re.match(val):
                     trank_col = col
@@ -601,7 +605,7 @@ def scrape_barttorvik() -> pd.DataFrame:
             home_team = " ".join(home_tokens)
 
             trank_match = re.match(
-                r"(.+?)\s+(-?\d+\.?\d*)\s+(\d+)-(\d+)\s+\(\d+%\)", trank_raw
+                r"(.+?)\s+(-?\d+\.?\d*),?\s+(\d+)-(\d+)\s+\(\d+%\)", trank_raw
             )
             if not trank_match:
                 continue
