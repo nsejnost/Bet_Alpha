@@ -140,6 +140,14 @@
             border-color: #e94560;
             box-shadow: 0 0 0 2px rgba(233,69,96,.15);
         }
+        .weight-total-ok {
+            font-weight: 700;
+            color: #155724;
+        }
+        .weight-total-err {
+            font-weight: 700;
+            color: #c0392b;
+        }
 
         /* ------------------------------------------------------------------ */
         /* Tabs                                                               */
@@ -474,12 +482,45 @@
     <!-- Threshold controls -->
     <div class="threshold-section">
         <table class="threshold-table">
-            <thead><tr><th>Analytics Site</th><th>Threshold (Pts)</th></tr></thead>
+            <thead><tr>
+                <th></th>
+                <th>KenPom</th>
+                <th>Hasla</th>
+                <th>Barttorvik</th>
+                <th>Wtd Avg</th>
+                <th>Total Pass</th>
+            </tr></thead>
             <tbody>
-                <tr><td>KenPom</td><td><input type="number" id="threshKP" value="4" min="0" step="0.5" oninput="recomputePass()"></td></tr>
-                <tr><td>Hasla</td><td><input type="number" id="threshHasla" value="4" min="0" step="0.5" oninput="recomputePass()"></td></tr>
-                <tr><td>Barttorvik</td><td><input type="number" id="threshBart" value="4" min="0" step="0.5" oninput="recomputePass()"></td></tr>
-                <tr><td>Total Pass</td><td><input type="number" id="threshTotal" value="2" min="1" max="3" step="1" oninput="recomputePass()"></td></tr>
+                <tr>
+                    <td>Threshold (Pts)</td>
+                    <td><input type="number" id="threshKP" value="4" min="0" step="0.5" oninput="recomputePass()"></td>
+                    <td><input type="number" id="threshHasla" value="4" min="0" step="0.5" oninput="recomputePass()"></td>
+                    <td><input type="number" id="threshBart" value="4" min="0" step="0.5" oninput="recomputePass()"></td>
+                    <td><input type="number" id="threshWtdAvg" value="4" min="0" step="0.5" oninput="recomputePass()"></td>
+                    <td><input type="number" id="threshTotal" value="3" min="1" max="4" step="1" oninput="recomputePass()"></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Weight controls -->
+    <div class="threshold-section">
+        <table class="threshold-table" id="weightTable">
+            <thead><tr>
+                <th></th>
+                <th>KenPom</th>
+                <th>Hasla</th>
+                <th>Barttorvik</th>
+                <th>Total</th>
+            </tr></thead>
+            <tbody>
+                <tr>
+                    <td>Weight (%)</td>
+                    <td><input type="number" id="weightKP" value="30" min="0" max="100" step="1" oninput="onWeightChange()"></td>
+                    <td><input type="number" id="weightHasla" value="40" min="0" max="100" step="1" oninput="onWeightChange()"></td>
+                    <td><input type="number" id="weightBart" value="30" min="0" max="100" step="1" oninput="onWeightChange()"></td>
+                    <td><span id="weightTotalDisplay" class="weight-total-ok">100</span></td>
+                </tr>
             </tbody>
         </table>
     </div>
@@ -550,87 +591,169 @@ const COL_LABELS = {
     KenPomTotal: "KenPom",
     HaslaTotal: "Hasla",
     BarttorvikTotal: "Barttorvik",
+    WtdAvgTotal: "Wtd Avg",
     MarketMinusKenPom: "Mkt\u2212KP",
     MarketMinusHasla: "Mkt\u2212Hasla",
     MarketMinusBarttorvik: "Mkt\u2212Bart",
+    MarketMinusWtdAvg: "Mkt\u2212Wtd Avg",
     ClosingSpread: "Market Spread",
     MarketFavoredTeam: "Favored",
     KenPomSpread: "KenPom",
     HaslaSpread: "Hasla",
     BarttorvikSpread: "Barttorvik",
+    WtdAvgSpread: "Wtd Avg",
     MarketMinusKenPomSpread: "Mkt\u2212KP",
     MarketMinusHaslaSpread: "Mkt\u2212Hasla",
     MarketMinusBarttorvikSpread: "Mkt\u2212Bart",
+    MarketMinusWtdAvgSpread: "Mkt\u2212Wtd Avg",
     KpPass: "KP Pass",
     HaslaPass: "Hasla Pass",
     BarttorvikPass: "Bart Pass",
+    WtdAvgPass: "Wtd Avg Pass",
     TotalPass: "Total Pass",
 };
 
+/* Explicit column order for each tab */
+const TOTALS_COL_ORDER = [
+    "Game_Date", "Game_Time", "TeamA", "TeamB",
+    "ClosingTotal", "KenPomTotal", "HaslaTotal", "BarttorvikTotal", "WtdAvgTotal",
+    "MarketMinusKenPom", "MarketMinusHasla", "MarketMinusBarttorvik", "MarketMinusWtdAvg",
+    "KpPass", "HaslaPass", "BarttorvikPass", "WtdAvgPass", "TotalPass",
+];
+const SPREADS_COL_ORDER = [
+    "Game_Date", "Game_Time", "TeamA", "TeamB",
+    "ClosingSpread", "MarketFavoredTeam",
+    "KenPomSpread", "HaslaSpread", "BarttorvikSpread", "WtdAvgSpread",
+    "MarketMinusKenPomSpread", "MarketMinusHaslaSpread", "MarketMinusBarttorvikSpread", "MarketMinusWtdAvgSpread",
+    "KpPass", "HaslaPass", "BarttorvikPass", "WtdAvgPass", "TotalPass",
+];
+
 /* Columns that contain difference values */
 const DIFF_COLS = new Set([
-    "MarketMinusKenPom", "MarketMinusHasla", "MarketMinusBarttorvik",
+    "MarketMinusKenPom", "MarketMinusHasla", "MarketMinusBarttorvik", "MarketMinusWtdAvg",
     "MarketMinusKenPomSpread", "MarketMinusHaslaSpread",
-    "MarketMinusBarttorvikSpread",
+    "MarketMinusBarttorvikSpread", "MarketMinusWtdAvgSpread",
 ]);
 
 /* Numeric columns (right-aligned) */
 const NUM_COLS = new Set([
-    "ClosingTotal", "KenPomTotal", "HaslaTotal", "BarttorvikTotal",
-    "ClosingSpread", "KenPomSpread", "HaslaSpread", "BarttorvikSpread",
+    "ClosingTotal", "KenPomTotal", "HaslaTotal", "BarttorvikTotal", "WtdAvgTotal",
+    "ClosingSpread", "KenPomSpread", "HaslaSpread", "BarttorvikSpread", "WtdAvgSpread",
 ]);
 
 const TEAM_COLS = new Set(["TeamA", "TeamB", "MarketFavoredTeam"]);
-const PASS_COLS = new Set(["KpPass", "HaslaPass", "BarttorvikPass", "TotalPass"]);
+const PASS_COLS = new Set(["KpPass", "HaslaPass", "BarttorvikPass", "WtdAvgPass", "TotalPass"]);
+
+/* Columns computed on the frontend (not from backend data) */
+const COMPUTED_COLS = new Set([
+    "WtdAvgTotal", "MarketMinusWtdAvg", "WtdAvgSpread", "MarketMinusWtdAvgSpread",
+    "KpPass", "HaslaPass", "BarttorvikPass", "WtdAvgPass", "TotalPass",
+]);
 
 /* ====================================================================== */
-/* Threshold / Pass logic                                                 */
+/* Threshold / Pass / Weight logic                                        */
 /* ====================================================================== */
 function getThresholds() {
     return {
-        kp:    parseFloat(document.getElementById("threshKP").value)    || 0,
-        hasla: parseFloat(document.getElementById("threshHasla").value) || 0,
-        bart:  parseFloat(document.getElementById("threshBart").value)  || 0,
-        total: parseInt(document.getElementById("threshTotal").value)   || 2,
+        kp:     parseFloat(document.getElementById("threshKP").value)     || 0,
+        hasla:  parseFloat(document.getElementById("threshHasla").value)  || 0,
+        bart:   parseFloat(document.getElementById("threshBart").value)   || 0,
+        wtdAvg: parseFloat(document.getElementById("threshWtdAvg").value) || 0,
+        total:  parseInt(document.getElementById("threshTotal").value)    || 3,
     };
 }
 
+function getWeights() {
+    return {
+        kp:    parseFloat(document.getElementById("weightKP").value)    || 0,
+        hasla: parseFloat(document.getElementById("weightHasla").value) || 0,
+        bart:  parseFloat(document.getElementById("weightBart").value)  || 0,
+    };
+}
+
+function weightsValid() {
+    const w = getWeights();
+    return Math.abs((w.kp + w.hasla + w.bart) - 100) < 0.001;
+}
+
+function onWeightChange() {
+    const w = getWeights();
+    const total = w.kp + w.hasla + w.bart;
+    const el = document.getElementById("weightTotalDisplay");
+    el.textContent = total;
+    el.className = Math.abs(total - 100) < 0.001 ? "weight-total-ok" : "weight-total-err";
+    recomputePass();
+}
+
 /**
- * For a given row of data and the current tab type, compute KpPass, HaslaPass,
- * BarttorvikPass, TotalPass based on the difference between each site's
- * projection and the market line vs the user threshold.
+ * Compute all derived fields for a row: WtdAvg values, Mkt-WtdAvg diffs,
+ * and all pass columns (KP, Hasla, Bart, WtdAvg, Total).
  */
-function computePassFields(row, tabType) {
+function computeFields(row, tabType) {
     const t = getThresholds();
+    const w = getWeights();
+    const wValid = weightsValid();
 
     let diffKP, diffHasla, diffBart;
+    let wtdAvgVal = null;
+    let mktMinusWtdAvg = null;
+
     if (tabType === "totals") {
         diffKP    = row["MarketMinusKenPom"];
         diffHasla = row["MarketMinusHasla"];
         diffBart  = row["MarketMinusBarttorvik"];
+
+        const kp = row["KenPomTotal"], hs = row["HaslaTotal"], bt = row["BarttorvikTotal"];
+        const mkt = row["ClosingTotal"];
+        if (wValid && isNum(kp) && isNum(hs) && isNum(bt)) {
+            wtdAvgVal = (w.kp / 100) * kp + (w.hasla / 100) * hs + (w.bart / 100) * bt;
+            if (isNum(mkt)) mktMinusWtdAvg = mkt - wtdAvgVal;
+        }
     } else {
         diffKP    = row["MarketMinusKenPomSpread"];
         diffHasla = row["MarketMinusHaslaSpread"];
         diffBart  = row["MarketMinusBarttorvikSpread"];
+
+        const kp = row["KenPomSpread"], hs = row["HaslaSpread"], bt = row["BarttorvikSpread"];
+        const mkt = row["ClosingSpread"];
+        if (wValid && isNum(kp) && isNum(hs) && isNum(bt)) {
+            wtdAvgVal = (w.kp / 100) * kp + (w.hasla / 100) * hs + (w.bart / 100) * bt;
+            if (isNum(mkt)) mktMinusWtdAvg = mkt + wtdAvgVal; /* ADD for spreads (opposite conventions) */
+        }
     }
 
-    const kpPass    = (diffKP    !== null && diffKP    !== undefined) ? (Math.abs(diffKP)    >= t.kp)    : false;
-    const haslaPass = (diffHasla !== null && diffHasla !== undefined) ? (Math.abs(diffHasla) >= t.hasla) : false;
-    const bartPass  = (diffBart  !== null && diffBart  !== undefined) ? (Math.abs(diffBart)  >= t.bart)  : false;
+    const kpPass     = isNum(diffKP)         ? (Math.abs(diffKP)         >= t.kp)     : false;
+    const haslaPass  = isNum(diffHasla)       ? (Math.abs(diffHasla)      >= t.hasla)  : false;
+    const bartPass   = isNum(diffBart)        ? (Math.abs(diffBart)       >= t.bart)   : false;
+    const wtdAvgPass = isNum(mktMinusWtdAvg)  ? (Math.abs(mktMinusWtdAvg) >= t.wtdAvg) : false;
 
-    const yesCount = (kpPass ? 1 : 0) + (haslaPass ? 1 : 0) + (bartPass ? 1 : 0);
+    const yesCount = (kpPass ? 1 : 0) + (haslaPass ? 1 : 0) + (bartPass ? 1 : 0) + (wtdAvgPass ? 1 : 0);
     const totalPass = yesCount >= t.total;
 
-    return {
-        KpPass:         kpPass    ? "Y" : "N",
-        HaslaPass:      haslaPass ? "Y" : "N",
-        BarttorvikPass: bartPass  ? "Y" : "N",
-        TotalPass:      totalPass ? "Y" : "N",
+    const result = {
+        KpPass:         kpPass     ? "Y" : "N",
+        HaslaPass:      haslaPass  ? "Y" : "N",
+        BarttorvikPass: bartPass   ? "Y" : "N",
+        WtdAvgPass:     wtdAvgPass ? "Y" : "N",
+        TotalPass:      totalPass  ? "Y" : "N",
     };
+
+    /* Store numeric computed columns too */
+    if (tabType === "totals") {
+        result.WtdAvgTotal = wtdAvgVal !== null ? Math.round(wtdAvgVal * 100) / 100 : null;
+        result.MarketMinusWtdAvg = mktMinusWtdAvg !== null ? Math.round(mktMinusWtdAvg * 100) / 100 : null;
+    } else {
+        result.WtdAvgSpread = wtdAvgVal !== null ? Math.round(wtdAvgVal * 100) / 100 : null;
+        result.MarketMinusWtdAvgSpread = mktMinusWtdAvg !== null ? Math.round(mktMinusWtdAvg * 100) / 100 : null;
+    }
+
+    return result;
 }
 
+function isNum(v) { return v !== null && v !== undefined && typeof v === "number" && !isNaN(v); }
+
 /**
- * Called when threshold inputs change — recompute pass columns and re-render.
+ * Called when threshold or weight inputs change — recompute and re-render.
  */
 function recomputePass() {
     if (!rawData) return;
@@ -717,24 +840,25 @@ function renderTable(name, columns, data, bodyOnly) {
     const filterRow = document.getElementById(name + "FilterRow");
     const tbody = document.getElementById(name + "Body");
 
-    /* Add pass columns to the column list */
-    const allCols = [...columns, "KpPass", "HaslaPass", "BarttorvikPass", "TotalPass"];
+    /* Use explicit column order for each tab */
+    const allCols = name === "totals" ? TOTALS_COL_ORDER : SPREADS_COL_ORDER;
 
-    /* Determine tab type for pass computation */
+    /* Determine tab type for computation */
     const tabType = name; /* "totals" or "spreads" */
+
+    /* Helper: get display value for a column, using computed fields if needed */
+    function getVal(row, col, fields) {
+        if (COMPUTED_COLS.has(col)) return fields[col];
+        return row[col];
+    }
 
     /* Apply sorting if active */
     let displayData = [...data];
     const ss = sortState[name];
     if (ss.col) {
         displayData.sort((a, b) => {
-            let va = a[ss.col], vb = b[ss.col];
-
-            /* For pass columns, compute on the fly */
-            if (PASS_COLS.has(ss.col)) {
-                va = computePassFields(a, tabType)[ss.col];
-                vb = computePassFields(b, tabType)[ss.col];
-            }
+            const fa = computeFields(a, tabType), fb = computeFields(b, tabType);
+            let va = getVal(a, ss.col, fa), vb = getVal(b, ss.col, fb);
 
             if (va === null || va === undefined) va = ss.asc ? Infinity : -Infinity;
             if (vb === null || vb === undefined) vb = ss.asc ? Infinity : -Infinity;
@@ -748,12 +872,8 @@ function renderTable(name, columns, data, bodyOnly) {
     allCols.forEach(col => {
         const valSet = new Set();
         data.forEach(row => {
-            let val;
-            if (PASS_COLS.has(col)) {
-                val = computePassFields(row, tabType)[col];
-            } else {
-                val = row[col];
-            }
+            const fields = computeFields(row, tabType);
+            let val = getVal(row, col, fields);
             if (val === null || val === undefined || val === "") val = "--";
             else if (typeof val === "number") val = formatNum(val);
             else val = String(val);
@@ -771,15 +891,10 @@ function renderTable(name, columns, data, bodyOnly) {
     /* Apply filters (multi-select: filterState[name][col] is a Set) */
     const filters = filterState[name] || {};
     displayData = displayData.filter(row => {
-        const pass = computePassFields(row, tabType);
+        const fields = computeFields(row, tabType);
         for (const [col, selectedSet] of Object.entries(filters)) {
             if (!selectedSet || selectedSet.size === 0) continue;
-            let val;
-            if (PASS_COLS.has(col)) {
-                val = pass[col];
-            } else {
-                val = row[col];
-            }
+            let val = getVal(row, col, fields);
             if (val === null || val === undefined || val === "") val = "--";
             else if (typeof val === "number") val = formatNum(val);
             else val = String(val);
@@ -962,20 +1077,17 @@ function renderTable(name, columns, data, bodyOnly) {
     tbody.innerHTML = "";
     displayData.forEach(row => {
         const tr = document.createElement("tr");
-        const passFields = computePassFields(row, tabType);
-        const totalPassYes = passFields.TotalPass === "Y";
+        const fields = computeFields(row, tabType);
+        const totalPassYes = fields.TotalPass === "Y";
 
         allCols.forEach(col => {
             const td = document.createElement("td");
-            let val;
+            let val = getVal(row, col, fields);
 
             if (PASS_COLS.has(col)) {
-                val = passFields[col];
                 td.textContent = val;
                 td.className = val === "Y" ? "pass-yes" : "pass-no";
             } else {
-                val = row[col];
-
                 if (val === null || val === undefined || val === "") {
                     td.textContent = "--";
                     if (DIFF_COLS.has(col)) td.className = "col-diff";
