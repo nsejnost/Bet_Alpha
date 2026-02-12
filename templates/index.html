@@ -693,7 +693,7 @@ function escapeHtml(str) {
     return str.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
 }
 
-function renderTable(name, columns, data) {
+function renderTable(name, columns, data, bodyOnly) {
     const headRow = document.getElementById(name + "Head");
     const filterRow = document.getElementById(name + "FilterRow");
     const tbody = document.getElementById(name + "Body");
@@ -769,6 +769,8 @@ function renderTable(name, columns, data) {
         return true;
     });
 
+    if (!bodyOnly) {
+
     /* Header */
     headRow.innerHTML = "";
     allCols.forEach((col, idx) => {
@@ -800,6 +802,19 @@ function renderTable(name, columns, data) {
                 ? [...selectedSet][0]
                 : selectedSet.size + " selected";
         trigger.innerHTML = '<span>' + escapeHtml(triggerLabel) + '</span><span class="arrow">&#9662;</span>';
+
+        /* Helper to update trigger label from checkbox handlers */
+        function updateTriggerLabel() {
+            const s = filterState[name][col];
+            const count = s ? s.size : 0;
+            const label = count === 0
+                ? "All"
+                : count === 1
+                    ? [...s][0]
+                    : count + " selected";
+            trigger.querySelector("span").textContent = label;
+            trigger.classList.toggle("active-filter", count > 0);
+        }
 
         /* Dropdown panel */
         const dropdown = document.createElement("div");
@@ -859,7 +874,8 @@ function renderTable(name, columns, data) {
                 } else {
                     filterState[name][col].delete(v);
                 }
-                renderTable(name, columns, data);
+                updateTriggerLabel();
+                renderTable(name, columns, data, true);
             });
         });
 
@@ -877,14 +893,18 @@ function renderTable(name, columns, data) {
         selectAllBtn.addEventListener("click", function(e) {
             e.stopPropagation();
             filterState[name][col] = new Set(vals);
-            renderTable(name, columns, data);
+            checkboxes.forEach(({ cb }) => { cb.checked = true; });
+            updateTriggerLabel();
+            renderTable(name, columns, data, true);
         });
 
         /* Clear Filter */
         clearBtn.addEventListener("click", function(e) {
             e.stopPropagation();
             filterState[name][col] = new Set();
-            renderTable(name, columns, data);
+            checkboxes.forEach(({ cb }) => { cb.checked = false; });
+            updateTriggerLabel();
+            renderTable(name, columns, data, true);
         });
 
         /* Toggle dropdown — append to body with fixed positioning */
@@ -916,6 +936,8 @@ function renderTable(name, columns, data) {
         th.appendChild(trigger);
         filterRow.appendChild(th);
     });
+
+    } /* end if (!bodyOnly) */
 
     /* Body */
     tbody.innerHTML = "";
