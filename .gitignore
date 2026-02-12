@@ -3,3 +3,4 @@ __pycache__/
 CBB_Model_Inputs_fixed.xlsx
 *.csv
 CbbMarketVsModel.xlsx
+*.db

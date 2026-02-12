@@ -44,6 +44,7 @@ from main import (
 )
 
 from scraper import scrape_kenpom, scrape_haslametrics, scrape_barttorvik
+from db import store_snapshots, get_history, get_accuracy_data, store_results, get_unscored_event_ids
 
 try:
     from zoneinfo import ZoneInfo
@@ -194,6 +195,7 @@ def run_pipeline():
                 game_time = ""
 
             out: dict = {
+                "EventID": g.get("EventID", ""),
                 "Game_Date": game_date,
                 "Game_Time": game_time,
                 "TeamA": g["TeamA_raw"],
@@ -472,15 +474,16 @@ def run_pipeline():
         for c in df.columns
         if c not in ["CommenceTimeUTC_dt", "CommenceTimeET_dt"]
     ]
-    totals_cols = [c for c in TOTALS_OUTPUT_COLUMNS if c in available_cols]
-    spreads_cols = [c for c in SPREADS_OUTPUT_COLUMNS if c in available_cols]
+    # Include EventID so the frontend can request per-game history
+    totals_cols = ["EventID"] + [c for c in TOTALS_OUTPUT_COLUMNS if c in available_cols]
+    spreads_cols = ["EventID"] + [c for c in SPREADS_OUTPUT_COLUMNS if c in available_cols]
 
     totals_df = df[totals_cols].copy().replace([np.inf, -np.inf], np.nan)
     spreads_df = df[spreads_cols].copy().replace([np.inf, -np.inf], np.nan)
 
     stats["total_games"] = int(len(df))
     stats["unmatched_kenpom"] = int(len(unmatched))
-    return totals_df, spreads_df, stats, unmatched
+    return df, totals_df, spreads_df, stats, unmatched
 
 
 # ---------------------------------------------------------------------------
@@ -538,7 +541,39 @@ def api_data():
         return _json_response(_cache["payload"])
 
     try:
-        totals_df, spreads_df, stats, unmatched = run_pipeline()
+        full_df, totals_df, spreads_df, stats, unmatched = run_pipeline()
+
+        # ── Store snapshots (deduplicated by content hash) ─────────
+        try:
+            snap_rows = []
+            for _, r in full_df.iterrows():
+                snap_rows.append({
+                    "event_id":         r.get("EventID", ""),
+                    "commence_time":    r.get("CommenceTimeUTC", ""),
+                    "away_team":        r.get("TeamA", ""),
+                    "home_team":        r.get("TeamB", ""),
+                    "closing_total":    r.get("ClosingTotal"),
+                    "closing_spread":   r.get("ClosingSpread"),
+                    "kenpom_total":     r.get("KenPomTotal"),
+                    "kenpom_spread":    r.get("KenPomSpread"),
+                    "hasla_total":      r.get("HaslaTotal"),
+                    "hasla_spread":     r.get("HaslaSpread"),
+                    "bart_total":       r.get("BarttorvikTotal"),
+                    "bart_spread":      r.get("BarttorvikSpread"),
+                    "mkt_minus_kp_total":  r.get("MarketMinusKenPom"),
+                    "mkt_minus_kp_spread": r.get("MarketMinusKenPomSpread"),
+                })
+            new_snaps = store_snapshots(snap_rows)
+            print(f"[DB] Stored {new_snaps} new snapshot(s)")
+        except Exception as snap_err:
+            print(f"[DB] Snapshot storage failed (non-fatal): {snap_err}")
+
+        # ── Fetch scores for completed games (no extra API cost
+        #    if no unscored games exist) ────────────────────────
+        try:
+            _fetch_and_store_scores()
+        except Exception as score_err:
+            print(f"[DB] Score fetch failed (non-fatal): {score_err}")
 
         # Convert to records then scrub NaN/Inf → None for valid JSON
         totals_records = _sanitize_records(totals_df.to_dict(orient="records"))
@@ -577,6 +612,180 @@ def api_data():
             },
             status=500,
         )
+
+
+# ---------------------------------------------------------------------------
+# Score fetching — Odds API /scores endpoint
+# ---------------------------------------------------------------------------
+import urllib.request
+
+_scores_cache = {"ts": 0, "data": None}
+SCORES_CACHE_TTL = 1800  # 30 min — same cadence as main data
+
+
+def _fetch_and_store_scores():
+    """Fetch final scores for completed games and persist to DB.
+
+    Only calls the Odds API scores endpoint if there are unscored games
+    in the DB whose commence_time is far enough in the past (3 hours)
+    that they should be finished.  Caches the API response for 30 min.
+    """
+    from db import get_unscored_event_ids, store_results
+    unscored = get_unscored_event_ids()
+    if not unscored:
+        return
+
+    now_ts = time.time()
+
+    # Use cached scores response if fresh
+    if _scores_cache["ts"] and (now_ts - _scores_cache["ts"]) < SCORES_CACHE_TTL:
+        scores_payload = _scores_cache["data"]
+    else:
+        api_key = os.getenv("ODDS_API_KEY", "").strip()
+        if not api_key:
+            return
+        url = (
+            f"https://api.the-odds-api.com/v4/sports/basketball_ncaab/scores/"
+            f"?apiKey={api_key}&daysFrom=3"
+        )
+        try:
+            req = urllib.request.Request(url, headers={"Accept": "application/json"})
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                scores_payload = json.loads(resp.read().decode())
+            _scores_cache["data"] = scores_payload
+            _scores_cache["ts"] = now_ts
+        except Exception as e:
+            print(f"[Scores] API fetch failed: {e}")
+            return
+
+    unscored_set = set(unscored)
+    to_store = []
+    for ev in scores_payload:
+        eid = ev.get("id", "")
+        if eid not in unscored_set:
+            continue
+        if not ev.get("completed", False):
+            continue
+        scores = ev.get("scores")
+        if not scores or len(scores) < 2:
+            continue
+
+        away_team = ev.get("away_team", "")
+        home_team = ev.get("home_team", "")
+        away_score = None
+        home_score = None
+        for s in scores:
+            if s.get("name") == away_team:
+                away_score = int(s["score"])
+            elif s.get("name") == home_team:
+                home_score = int(s["score"])
+        if away_score is None or home_score is None:
+            continue
+
+        to_store.append({
+            "event_id": eid,
+            "commence_time": ev.get("commence_time", ""),
+            "away_team": away_team,
+            "home_team": home_team,
+            "away_score": away_score,
+            "home_score": home_score,
+        })
+
+    if to_store:
+        n = store_results(to_store)
+        print(f"[Scores] Stored {n} new result(s)")
+
+
+# ---------------------------------------------------------------------------
+# API: per-game history (Feature 1)
+# ---------------------------------------------------------------------------
+
+@app.route("/api/history")
+@require_auth
+def api_history():
+    """Return all snapshots for a single game."""
+    event_id = request.args.get("event_id", "").strip()
+    if not event_id:
+        return _json_response({"error": "event_id required"}, 400)
+    rows = get_history(event_id)
+    return _json_response({"event_id": event_id, "snapshots": rows})
+
+
+# ---------------------------------------------------------------------------
+# API: model accuracy (Feature 2)
+# ---------------------------------------------------------------------------
+
+@app.route("/api/accuracy")
+@require_auth
+def api_accuracy():
+    """Return per-game accuracy data + aggregate stats."""
+    rows = get_accuracy_data()
+
+    # Compute aggregate accuracy metrics
+    agg = _compute_accuracy_agg(rows)
+
+    return _json_response({
+        "games": _sanitize_records(rows),
+        "aggregate": agg,
+        "total_scored": len(rows),
+    })
+
+
+def _compute_accuracy_agg(rows: list[dict]) -> dict:
+    """Compute aggregate accuracy metrics from results + locked snapshots."""
+    models = {
+        "market":  {"total_key": "closing_total",  "spread_key": "closing_spread"},
+        "kenpom":  {"total_key": "kenpom_total",    "spread_key": "kenpom_spread"},
+        "hasla":   {"total_key": "hasla_total",     "spread_key": "hasla_spread"},
+        "bart":    {"total_key": "bart_total",      "spread_key": "bart_spread"},
+    }
+
+    agg = {}
+    for model_name, keys in models.items():
+        total_errors = []
+        spread_errors = []
+        ou_correct = 0
+        ou_total = 0
+        ats_correct = 0
+        ats_total = 0
+
+        for r in rows:
+            actual_total = r.get("actual_total")
+            actual_margin = r.get("actual_home_margin")
+            pred_total = r.get(keys["total_key"])
+            pred_spread = r.get(keys["spread_key"])
+
+            # Total accuracy (O/U)
+            if pred_total is not None and actual_total is not None:
+                err = abs(actual_total - pred_total)
+                total_errors.append(err)
+                # O/U hit: did the actual go over/under the predicted line?
+                if actual_total != pred_total:
+                    ou_total += 1
+                    if actual_total > pred_total:
+                        ou_correct += 1  # over hit
+                    else:
+                        ou_correct += 0  # under hit — counted on opposite side
+                    # Actually: was the model's implied over/under correct?
+                    # For market line: actual > line means Over hit
+                    # We track both sides fairly — just count if model was on correct side
+                    # Simpler: just track MAE; for hit rate, we need a "bet direction"
+
+            # Spread accuracy (ATS)
+            if pred_spread is not None and actual_margin is not None:
+                err = abs(actual_margin - pred_spread)
+                spread_errors.append(err)
+
+        n_total = len(total_errors)
+        n_spread = len(spread_errors)
+        agg[model_name] = {
+            "total_mae": round(sum(total_errors) / n_total, 2) if n_total else None,
+            "total_n": n_total,
+            "spread_mae": round(sum(spread_errors) / n_spread, 2) if n_spread else None,
+            "spread_n": n_spread,
+        }
+
+    return agg
 
 
 if __name__ == "__main__":
