@@ -208,19 +208,22 @@
             padding: 4px 6px;
             cursor: default;
         }
-        table.data-table thead tr.filter-row input {
+        table.data-table thead tr.filter-row select {
             width: 100%;
-            padding: 3px 5px;
+            padding: 3px 4px;
             border: 1px solid rgba(255,255,255,.3);
             border-radius: 3px;
             font-size: .72rem;
             background: rgba(255,255,255,.12);
             color: #fff;
+            cursor: pointer;
+            appearance: auto;
         }
-        table.data-table thead tr.filter-row input::placeholder {
-            color: rgba(255,255,255,.45);
+        table.data-table thead tr.filter-row select option {
+            background: #1a1a2e;
+            color: #fff;
         }
-        table.data-table thead tr.filter-row input:focus {
+        table.data-table thead tr.filter-row select:focus {
             outline: none;
             border-color: #e94560;
             background: rgba(255,255,255,.2);
@@ -615,15 +618,47 @@ function renderTable(name, columns, data) {
         });
     }
 
+    /* Build unique value sets for dropdown filters (from ALL data, not just sorted) */
+    const uniqueVals = {};
+    allCols.forEach(col => {
+        const valSet = new Set();
+        data.forEach(row => {
+            let val;
+            if (PASS_COLS.has(col)) {
+                val = computePassFields(row, tabType)[col];
+            } else {
+                val = row[col];
+            }
+            if (val === null || val === undefined || val === "") val = "--";
+            else if (typeof val === "number") val = formatNum(val);
+            else val = String(val);
+            valSet.add(val);
+        });
+        uniqueVals[col] = [...valSet].sort((a, b) => {
+            if (a === "--") return 1;
+            if (b === "--") return -1;
+            const na = parseFloat(a), nb = parseFloat(b);
+            if (!isNaN(na) && !isNaN(nb)) return na - nb;
+            return a.localeCompare(b);
+        });
+    });
+
     /* Apply filters */
     const filters = filterState[name] || {};
     displayData = displayData.filter(row => {
         const pass = computePassFields(row, tabType);
-        for (const [col, term] of Object.entries(filters)) {
-            if (!term) continue;
-            let val = PASS_COLS.has(col) ? pass[col] : row[col];
-            if (val === null || val === undefined) val = "";
-            if (!String(val).toLowerCase().includes(term.toLowerCase())) return false;
+        for (const [col, selected] of Object.entries(filters)) {
+            if (!selected) continue;
+            let val;
+            if (PASS_COLS.has(col)) {
+                val = pass[col];
+            } else {
+                val = row[col];
+            }
+            if (val === null || val === undefined || val === "") val = "--";
+            else if (typeof val === "number") val = formatNum(val);
+            else val = String(val);
+            if (val !== selected) return false;
         }
         return true;
     });
@@ -642,19 +677,32 @@ function renderTable(name, columns, data) {
         headRow.appendChild(th);
     });
 
-    /* Filter row */
+    /* Filter row (dropdowns) */
     filterRow.innerHTML = "";
     allCols.forEach(col => {
         const th = document.createElement("th");
-        const input = document.createElement("input");
-        input.type = "text";
-        input.placeholder = "Filter...";
-        input.value = filters[col] || "";
-        input.addEventListener("input", function() {
+        const select = document.createElement("select");
+
+        /* "All" option */
+        const allOpt = document.createElement("option");
+        allOpt.value = "";
+        allOpt.textContent = "All";
+        select.appendChild(allOpt);
+
+        /* One option per unique value */
+        (uniqueVals[col] || []).forEach(v => {
+            const opt = document.createElement("option");
+            opt.value = v;
+            opt.textContent = v;
+            if (filters[col] === v) opt.selected = true;
+            select.appendChild(opt);
+        });
+
+        select.addEventListener("change", function() {
             filterState[name][col] = this.value;
             renderTable(name, columns, data);
         });
-        th.appendChild(input);
+        th.appendChild(select);
         filterRow.appendChild(th);
     });
 
