@@ -1190,6 +1190,10 @@ function renderTable(name, columns, data, bodyOnly) {
         });
         tbody.appendChild(tr);
     });
+
+    /* Recalculate sticky column positions after every render (column widths
+       can change when filters add/remove rows in auto table layout). */
+    applyStickyColumns(name + "Table");
 }
 
 /* ====================================================================== */
@@ -1317,7 +1321,6 @@ function sortByColumn(tableName, col, colIdx) {
 
     if (tableName === currentTab) {
         document.getElementById(tableName + "Wrapper").hidden = false;
-        applyStickyColumns(tableName + "Table");
     }
 }
 
