@@ -126,22 +126,26 @@ def scrape_kenpom() -> pd.DataFrame:
 
     for header_row in header_rows:
         current_headers = []
-        for th in header_row.find_all("th"):
-            current_headers.append(th.get_text(strip=True))
-
-        # Locate required column indices by header name
-        # KenPom headers: Rk, Team, Conf, W-L, AdjEM, AdjO, AdjD, AdjT, Luck, ...
         current_map = {}
-        for i, h in enumerate(current_headers):
-            h_lower = h.lower().strip()
+        # Track actual body-column position, accounting for colspan
+        col_pos = 0
+        for th in header_row.find_all("th"):
+            text = th.get_text(strip=True)
+            colspan = int(th.get("colspan", 1))
+            current_headers.append(text)
+
+            # KenPom headers may use AdjO/AdjD (old) or ORtg/DRtg (new)
+            h_lower = text.lower().strip()
             if h_lower == "team":
-                current_map["Team"] = i
+                current_map["Team"] = col_pos
             elif h_lower in ("adjt", "adjtempo"):
-                current_map["AdjTempo"] = i
-            elif h_lower in ("adjo",):
-                current_map["AdjO"] = i
-            elif h_lower in ("adjd",):
-                current_map["AdjD"] = i
+                current_map["AdjTempo"] = col_pos
+            elif h_lower in ("adjo", "ortg") and "AdjO" not in current_map:
+                current_map["AdjO"] = col_pos
+            elif h_lower in ("adjd", "drtg") and "AdjD" not in current_map:
+                current_map["AdjD"] = col_pos
+
+            col_pos += colspan
 
         # Use this row if it has more of the needed columns than previous rows
         if len(current_map) > len(col_map):
@@ -501,6 +505,30 @@ def scrape_barttorvik() -> pd.DataFrame:
             col_renames[col] = "T-Rank Line"
     if col_renames:
         b = b.rename(columns=col_renames)
+
+    # When JSON returns an array of arrays (no column headers), columns are
+    # integer-indexed.  Auto-detect Matchup and T-Rank Line by content.
+    if "Matchup" not in b.columns or "T-Rank Line" not in b.columns:
+        matchup_col = None
+        trank_col = None
+        trank_re = re.compile(r".+\s+-?\d+\.?\d*\s+\d+-\d+\s+\(\d+%\)")
+        for _, sample_row in b.head(min(50, len(b))).iterrows():
+            for col in b.columns:
+                val = str(sample_row[col]).strip()
+                if matchup_col is None and (" at " in val or " vs " in val):
+                    matchup_col = col
+                if trank_col is None and trank_re.match(val):
+                    trank_col = col
+            if matchup_col is not None and trank_col is not None:
+                break
+        renames = {}
+        if matchup_col is not None and "Matchup" not in b.columns:
+            renames[matchup_col] = "Matchup"
+        if trank_col is not None and "T-Rank Line" not in b.columns:
+            renames[trank_col] = "T-Rank Line"
+        if renames:
+            b = b.rename(columns=renames)
+            print(f"[Barttorvik] Auto-detected columns: {renames}")
 
     required = ["Matchup", "T-Rank Line"]
     missing = [c for c in required if c not in b.columns]
