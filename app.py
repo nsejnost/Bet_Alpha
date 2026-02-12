@@ -16,10 +16,11 @@ import sys
 import time
 import traceback
 from datetime import datetime, timedelta
+from functools import wraps
 
 import numpy as np
 import pandas as pd
-from flask import Flask, render_template, Response
+from flask import Flask, render_template, Response, request
 
 # Import all needed functions and constants from the existing main.py
 from main import (
@@ -52,10 +53,33 @@ except ImportError:
 app = Flask(__name__)
 
 # ---------------------------------------------------------------------------
+# Basic auth — set APP_USERNAME and APP_PASSWORD in Render env vars
+# ---------------------------------------------------------------------------
+APP_USERNAME = os.getenv("APP_USERNAME", "")
+APP_PASSWORD = os.getenv("APP_PASSWORD", "")
+
+
+def require_auth(f):
+    """Decorator that enforces HTTP Basic Auth when credentials are configured."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if APP_USERNAME and APP_PASSWORD:
+            auth = request.authorization
+            if not auth or auth.username != APP_USERNAME or auth.password != APP_PASSWORD:
+                return Response(
+                    "Authentication required.",
+                    401,
+                    {"WWW-Authenticate": 'Basic realm="Login Required"'},
+                )
+        return f(*args, **kwargs)
+    return decorated
+
+
+# ---------------------------------------------------------------------------
 # Simple in-memory cache so rapid refreshes don't hammer the Odds API
 # ---------------------------------------------------------------------------
 _cache = {"totals": None, "spreads": None, "stats": None, "ts": 0}
-CACHE_TTL_SECONDS = 60  # re-use data for 60 seconds
+CACHE_TTL_SECONDS = 300  # re-use data for 5 minutes
 
 
 def run_pipeline():
@@ -498,11 +522,13 @@ def _json_response(payload: dict, status: int = 200) -> Response:
 
 
 @app.route("/")
+@require_auth
 def index():
     return render_template("index.html")
 
 
 @app.route("/api/data")
+@require_auth
 def api_data():
     """Return Totals and Spreads tables as JSON."""
     global _cache
