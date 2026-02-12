@@ -204,7 +204,8 @@
         table.data-table {
             width: max-content;
             min-width: 100%;
-            border-collapse: collapse;
+            border-collapse: separate;
+            border-spacing: 0;
             font-size: .82rem;
             background: #fff;
             border-radius: 8px;
@@ -368,7 +369,7 @@
             display: none;
         }
 
-        table.data-table tbody tr { border-bottom: 1px solid #f0f0f0; }
+        table.data-table tbody td { border-bottom: 1px solid #f0f0f0; }
         table.data-table tbody tr:nth-child(even) { background: #fafbfc; }
 
         table.data-table td {
