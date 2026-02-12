@@ -62,8 +62,6 @@ TOTALS_OUTPUT_COLUMNS = [
     "MarketMinusKenPom",
     "MarketMinusHasla",
     "MarketMinusBarttorvik",
-    "HaslaMinusKenPom",
-    "BooksWithTotal",
 ]
 
 SPREADS_OUTPUT_COLUMNS = [
@@ -79,8 +77,6 @@ SPREADS_OUTPUT_COLUMNS = [
     "MarketMinusKenPomSpread",
     "MarketMinusHaslaSpread",
     "MarketMinusBarttorvikSpread",
-    "HaslaMinusKenPomSpread",
-    "BooksWithSpread",
 ]
 
 # =========================

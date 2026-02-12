@@ -302,11 +302,6 @@ def run_pipeline():
             out["MarketMinusKenPom"] = round(
                 out["ClosingTotal"] - out["KenPomTotal"], 2
             )
-            out["HaslaMinusKenPom"] = (
-                round(out["HaslaTotal"] - out["KenPomTotal"], 2)
-                if not pd.isna(out["HaslaTotal"])
-                else np.nan
-            )
             out["MarketMinusHasla"] = (
                 round(out["ClosingTotal"] - out["HaslaTotal"], 2)
                 if not pd.isna(out["HaslaTotal"])
@@ -346,12 +341,6 @@ def run_pipeline():
                 out["MarketMinusKenPomSpread"] = np.nan
                 out["MarketMinusHaslaSpread"] = np.nan
                 out["MarketMinusBarttorvikSpread"] = np.nan
-
-            out["HaslaMinusKenPomSpread"] = (
-                round(float(out["HaslaSpread"] - out["KenPomSpread"]), 2)
-                if not pd.isna(out.get("HaslaSpread", np.nan))
-                else np.nan
-            )
 
             rows.append(out)
 

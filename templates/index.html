@@ -89,6 +89,50 @@
         }
 
         /* ------------------------------------------------------------------ */
+        /* Threshold table                                                    */
+        /* ------------------------------------------------------------------ */
+        .threshold-section {
+            padding: 16px 28px 0;
+        }
+        .threshold-table {
+            border-collapse: collapse;
+            font-size: .82rem;
+            background: #fff;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 1px 4px rgba(0,0,0,.08);
+        }
+        .threshold-table thead th {
+            background: #1a1a2e;
+            color: #fff;
+            padding: 8px 14px;
+            text-align: left;
+            font-weight: 600;
+            font-size: .78rem;
+            letter-spacing: .3px;
+        }
+        .threshold-table td {
+            padding: 6px 14px;
+            border-bottom: 1px solid #f0f0f0;
+        }
+        .threshold-table td:first-child {
+            font-weight: 600;
+        }
+        .threshold-table input[type="number"] {
+            width: 70px;
+            padding: 4px 6px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: .82rem;
+            text-align: right;
+        }
+        .threshold-table input[type="number"]:focus {
+            outline: none;
+            border-color: #e94560;
+            box-shadow: 0 0 0 2px rgba(233,69,96,.15);
+        }
+
+        /* ------------------------------------------------------------------ */
         /* Tabs                                                               */
         /* ------------------------------------------------------------------ */
         .tab-bar {
@@ -124,7 +168,7 @@
         }
         .table-wrapper[hidden] { display: none; }
 
-        table {
+        table.data-table {
             width: 100%;
             border-collapse: collapse;
             font-size: .82rem;
@@ -133,7 +177,7 @@
             overflow: hidden;
             box-shadow: 0 1px 4px rgba(0,0,0,.08);
         }
-        thead th {
+        table.data-table thead th {
             background: #1a1a2e;
             color: #fff;
             padding: 10px 12px;
@@ -148,21 +192,44 @@
             font-size: .78rem;
             letter-spacing: .3px;
         }
-        thead th:hover { background: #16213e; }
-        thead th .sort-arrow {
+        table.data-table thead th:hover { background: #16213e; }
+        table.data-table thead th .sort-arrow {
             display: inline-block;
             margin-left: 4px;
             font-size: .65rem;
             opacity: .5;
         }
-        thead th.sorted-asc .sort-arrow::after { content: "\25B2"; opacity: 1; }
-        thead th.sorted-desc .sort-arrow::after { content: "\25BC"; opacity: 1; }
+        table.data-table thead th.sorted-asc .sort-arrow::after { content: "\25B2"; opacity: 1; }
+        table.data-table thead th.sorted-desc .sort-arrow::after { content: "\25BC"; opacity: 1; }
 
-        tbody tr { border-bottom: 1px solid #f0f0f0; }
-        tbody tr:nth-child(even) { background: #fafbfc; }
-        tbody tr:hover { background: #eef2ff; }
+        /* Filter row */
+        table.data-table thead tr.filter-row th {
+            background: #232946;
+            padding: 4px 6px;
+            cursor: default;
+        }
+        table.data-table thead tr.filter-row input {
+            width: 100%;
+            padding: 3px 5px;
+            border: 1px solid rgba(255,255,255,.3);
+            border-radius: 3px;
+            font-size: .72rem;
+            background: rgba(255,255,255,.12);
+            color: #fff;
+        }
+        table.data-table thead tr.filter-row input::placeholder {
+            color: rgba(255,255,255,.45);
+        }
+        table.data-table thead tr.filter-row input:focus {
+            outline: none;
+            border-color: #e94560;
+            background: rgba(255,255,255,.2);
+        }
 
-        td {
+        table.data-table tbody tr { border-bottom: 1px solid #f0f0f0; }
+        table.data-table tbody tr:nth-child(even) { background: #fafbfc; }
+
+        table.data-table td {
             padding: 8px 12px;
             white-space: nowrap;
         }
@@ -172,20 +239,21 @@
         td.col-num  { text-align: right; font-variant-numeric: tabular-nums; }
         td.col-diff { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
 
-        /* Difference cell coloring */
-        td.diff-pos { background: #fff0f0; color: #c0392b; }
-        td.diff-neg { background: #f0fff4; color: #27ae60; }
-        td.diff-zero { color: #888; }
-        td.diff-na  { color: #ccc; font-style: italic; }
-
         /* Favored team column */
         td.col-favored { font-weight: 600; color: #2c3e50; }
+
+        /* Pass column styling */
+        td.pass-yes { background: #d4edda; color: #155724; font-weight: 700; text-align: center; }
+        td.pass-no  { background: #f8d7da; color: #721c24; font-weight: 700; text-align: center; }
+
+        /* Row highlight when Total Pass = Y (applied to non-pass cells) */
+        td.row-pass-green { background: #d4edda; }
 
         /* ------------------------------------------------------------------ */
         /* Loading / Error states                                             */
         /* ------------------------------------------------------------------ */
         .loading-overlay {
-            display: flex;
+            display: none;
             flex-direction: column;
             align-items: center;
             justify-content: center;
@@ -226,6 +294,17 @@
         }
 
         /* ------------------------------------------------------------------ */
+        /* Welcome / initial state                                            */
+        /* ------------------------------------------------------------------ */
+        .welcome-msg {
+            text-align: center;
+            padding: 80px 20px;
+            color: #888;
+            font-size: .95rem;
+        }
+        .welcome-msg strong { color: #1a1a2e; }
+
+        /* ------------------------------------------------------------------ */
         /* Footer                                                             */
         /* ------------------------------------------------------------------ */
         .footer {
@@ -242,10 +321,11 @@
             .header { padding: 14px 16px; }
             .header h1 { font-size: 1.1rem; }
             .stats-bar { padding: 8px 16px; gap: 12px; }
+            .threshold-section { padding: 12px 16px 0; }
             .tab-bar { padding: 0 16px; }
             .tab-btn { padding: 10px 16px; font-size: .88rem; }
             .table-wrapper { padding: 12px 8px; }
-            td, thead th { padding: 6px 8px; font-size: .75rem; }
+            td, table.data-table thead th { padding: 6px 8px; font-size: .75rem; }
         }
     </style>
 </head>
@@ -273,13 +353,26 @@
         <span class="updated-at" id="updatedAt"></span>
     </div>
 
+    <!-- Threshold controls -->
+    <div class="threshold-section">
+        <table class="threshold-table">
+            <thead><tr><th>Analytics Site</th><th>Threshold (Pts)</th></tr></thead>
+            <tbody>
+                <tr><td>KenPom</td><td><input type="number" id="threshKP" value="3" min="0" step="0.5" onchange="recomputePass()"></td></tr>
+                <tr><td>Hasla</td><td><input type="number" id="threshHasla" value="3" min="0" step="0.5" onchange="recomputePass()"></td></tr>
+                <tr><td>Barttorvik</td><td><input type="number" id="threshBart" value="3" min="0" step="0.5" onchange="recomputePass()"></td></tr>
+                <tr><td>Total Pass</td><td><input type="number" id="threshTotal" value="2" min="1" max="3" step="1" onchange="recomputePass()"></td></tr>
+            </tbody>
+        </table>
+    </div>
+
     <!-- Tabs -->
     <div class="tab-bar">
         <button class="tab-btn active" data-tab="totals" onclick="switchTab('totals')">Totals</button>
         <button class="tab-btn" data-tab="spreads" onclick="switchTab('spreads')">Spreads</button>
     </div>
 
-    <!-- Loading state -->
+    <!-- Loading state (hidden by default — not shown on initial load) -->
     <div class="loading-overlay" id="loading">
         <div class="spinner"></div>
         <div>Loading data from Odds API and models...</div>
@@ -288,16 +381,27 @@
     <!-- Error state -->
     <div id="errorContainer" style="display:none;"></div>
 
+    <!-- Welcome message shown before first refresh -->
+    <div class="welcome-msg" id="welcomeMsg">
+        Click <strong>Refresh</strong> above to fetch the latest odds and model data.
+    </div>
+
     <!-- Tables -->
     <div class="table-wrapper" id="totalsWrapper" hidden>
-        <table id="totalsTable">
-            <thead><tr id="totalsHead"></tr></thead>
+        <table class="data-table" id="totalsTable">
+            <thead>
+                <tr id="totalsHead"></tr>
+                <tr class="filter-row" id="totalsFilterRow"></tr>
+            </thead>
             <tbody id="totalsBody"></tbody>
         </table>
     </div>
     <div class="table-wrapper" id="spreadsWrapper" hidden>
-        <table id="spreadsTable">
-            <thead><tr id="spreadsHead"></tr></thead>
+        <table class="data-table" id="spreadsTable">
+            <thead>
+                <tr id="spreadsHead"></tr>
+                <tr class="filter-row" id="spreadsFilterRow"></tr>
+            </thead>
             <tbody id="spreadsBody"></tbody>
         </table>
     </div>
@@ -313,6 +417,7 @@
 let rawData = null;
 let currentTab = "totals";
 let sortState = { totals: { col: null, asc: true }, spreads: { col: null, asc: true } };
+let filterState = { totals: {}, spreads: {} };
 let autoRefreshTimer = null;
 
 /* ====================================================================== */
@@ -330,8 +435,6 @@ const COL_LABELS = {
     MarketMinusKenPom: "Mkt\u2212KP",
     MarketMinusHasla: "Mkt\u2212Hasla",
     MarketMinusBarttorvik: "Mkt\u2212Bart",
-    HaslaMinusKenPom: "Hasla\u2212KP",
-    BooksWithTotal: "Books",
     ClosingSpread: "Market Spread",
     MarketFavoredTeam: "Favored",
     KenPomSpread: "KenPom",
@@ -340,27 +443,83 @@ const COL_LABELS = {
     MarketMinusKenPomSpread: "Mkt\u2212KP",
     MarketMinusHaslaSpread: "Mkt\u2212Hasla",
     MarketMinusBarttorvikSpread: "Mkt\u2212Bart",
-    HaslaMinusKenPomSpread: "Hasla\u2212KP",
-    BooksWithSpread: "Books",
+    KpPass: "KP Pass",
+    HaslaPass: "Hasla Pass",
+    BarttorvikPass: "Bart Pass",
+    TotalPass: "Total Pass",
 };
 
-/* Columns that show difference values (color-coded) */
+/* Columns that contain difference values */
 const DIFF_COLS = new Set([
     "MarketMinusKenPom", "MarketMinusHasla", "MarketMinusBarttorvik",
-    "HaslaMinusKenPom",
     "MarketMinusKenPomSpread", "MarketMinusHaslaSpread",
-    "MarketMinusBarttorvikSpread", "HaslaMinusKenPomSpread",
+    "MarketMinusBarttorvikSpread",
 ]);
 
 /* Numeric columns (right-aligned) */
 const NUM_COLS = new Set([
     "ClosingTotal", "KenPomTotal", "HaslaTotal", "BarttorvikTotal",
-    "BooksWithTotal",
     "ClosingSpread", "KenPomSpread", "HaslaSpread", "BarttorvikSpread",
-    "BooksWithSpread",
 ]);
 
 const TEAM_COLS = new Set(["TeamA", "TeamB", "MarketFavoredTeam"]);
+const PASS_COLS = new Set(["KpPass", "HaslaPass", "BarttorvikPass", "TotalPass"]);
+
+/* ====================================================================== */
+/* Threshold / Pass logic                                                 */
+/* ====================================================================== */
+function getThresholds() {
+    return {
+        kp:    parseFloat(document.getElementById("threshKP").value)    || 0,
+        hasla: parseFloat(document.getElementById("threshHasla").value) || 0,
+        bart:  parseFloat(document.getElementById("threshBart").value)  || 0,
+        total: parseInt(document.getElementById("threshTotal").value)   || 2,
+    };
+}
+
+/**
+ * For a given row of data and the current tab type, compute KpPass, HaslaPass,
+ * BarttorvikPass, TotalPass based on the difference between each site's
+ * projection and the market line vs the user threshold.
+ */
+function computePassFields(row, tabType) {
+    const t = getThresholds();
+
+    let diffKP, diffHasla, diffBart;
+    if (tabType === "totals") {
+        diffKP    = row["MarketMinusKenPom"];
+        diffHasla = row["MarketMinusHasla"];
+        diffBart  = row["MarketMinusBarttorvik"];
+    } else {
+        diffKP    = row["MarketMinusKenPomSpread"];
+        diffHasla = row["MarketMinusHaslaSpread"];
+        diffBart  = row["MarketMinusBarttorvikSpread"];
+    }
+
+    const kpPass    = (diffKP    !== null && diffKP    !== undefined) ? (Math.abs(diffKP)    >= t.kp)    : false;
+    const haslaPass = (diffHasla !== null && diffHasla !== undefined) ? (Math.abs(diffHasla) >= t.hasla) : false;
+    const bartPass  = (diffBart  !== null && diffBart  !== undefined) ? (Math.abs(diffBart)  >= t.bart)  : false;
+
+    const yesCount = (kpPass ? 1 : 0) + (haslaPass ? 1 : 0) + (bartPass ? 1 : 0);
+    const totalPass = yesCount >= t.total;
+
+    return {
+        KpPass:         kpPass    ? "Y" : "N",
+        HaslaPass:      haslaPass ? "Y" : "N",
+        BarttorvikPass: bartPass  ? "Y" : "N",
+        TotalPass:      totalPass ? "Y" : "N",
+    };
+}
+
+/**
+ * Called when threshold inputs change — recompute pass columns and re-render.
+ */
+function recomputePass() {
+    if (!rawData) return;
+    renderTable("totals", rawData.totals.columns, rawData.totals.data);
+    renderTable("spreads", rawData.spreads.columns, rawData.spreads.data);
+    switchTab(currentTab);
+}
 
 /* ====================================================================== */
 /* Fetch data                                                             */
@@ -371,6 +530,7 @@ async function fetchData() {
     btn.textContent = "Loading\u2026";
     document.getElementById("loading").style.display = "flex";
     document.getElementById("errorContainer").style.display = "none";
+    document.getElementById("welcomeMsg").style.display = "none";
     document.getElementById("totalsWrapper").hidden = true;
     document.getElementById("spreadsWrapper").hidden = true;
 
@@ -426,48 +586,117 @@ function escapeHtml(str) {
 
 function renderTable(name, columns, data) {
     const headRow = document.getElementById(name + "Head");
+    const filterRow = document.getElementById(name + "FilterRow");
     const tbody = document.getElementById(name + "Body");
+
+    /* Add pass columns to the column list */
+    const allCols = [...columns, "KpPass", "HaslaPass", "BarttorvikPass", "TotalPass"];
+
+    /* Determine tab type for pass computation */
+    const tabType = name; /* "totals" or "spreads" */
+
+    /* Apply sorting if active */
+    let displayData = [...data];
+    const ss = sortState[name];
+    if (ss.col) {
+        displayData.sort((a, b) => {
+            let va = a[ss.col], vb = b[ss.col];
+
+            /* For pass columns, compute on the fly */
+            if (PASS_COLS.has(ss.col)) {
+                va = computePassFields(a, tabType)[ss.col];
+                vb = computePassFields(b, tabType)[ss.col];
+            }
+
+            if (va === null || va === undefined) va = ss.asc ? Infinity : -Infinity;
+            if (vb === null || vb === undefined) vb = ss.asc ? Infinity : -Infinity;
+            if (typeof va === "string") return ss.asc ? va.localeCompare(vb) : vb.localeCompare(va);
+            return ss.asc ? va - vb : vb - va;
+        });
+    }
+
+    /* Apply filters */
+    const filters = filterState[name] || {};
+    displayData = displayData.filter(row => {
+        const pass = computePassFields(row, tabType);
+        for (const [col, term] of Object.entries(filters)) {
+            if (!term) continue;
+            let val = PASS_COLS.has(col) ? pass[col] : row[col];
+            if (val === null || val === undefined) val = "";
+            if (!String(val).toLowerCase().includes(term.toLowerCase())) return false;
+        }
+        return true;
+    });
 
     /* Header */
     headRow.innerHTML = "";
-    columns.forEach((col, idx) => {
+    allCols.forEach((col, idx) => {
         const th = document.createElement("th");
         th.dataset.col = col;
         th.dataset.idx = idx;
         th.innerHTML = escapeHtml(COL_LABELS[col] || col) + ' <span class="sort-arrow"></span>';
         th.onclick = () => sortByColumn(name, col, idx);
-
-        /* Restore sort indicator */
-        const ss = sortState[name];
         if (ss.col === col) {
             th.classList.add(ss.asc ? "sorted-asc" : "sorted-desc");
         }
         headRow.appendChild(th);
     });
 
+    /* Filter row */
+    filterRow.innerHTML = "";
+    allCols.forEach(col => {
+        const th = document.createElement("th");
+        const input = document.createElement("input");
+        input.type = "text";
+        input.placeholder = "Filter...";
+        input.value = filters[col] || "";
+        input.addEventListener("input", function() {
+            filterState[name][col] = this.value;
+            renderTable(name, columns, data);
+        });
+        th.appendChild(input);
+        filterRow.appendChild(th);
+    });
+
     /* Body */
     tbody.innerHTML = "";
-    data.forEach(row => {
+    displayData.forEach(row => {
         const tr = document.createElement("tr");
-        columns.forEach(col => {
-            const td = document.createElement("td");
-            const val = row[col];
+        const passFields = computePassFields(row, tabType);
+        const totalPassYes = passFields.TotalPass === "Y";
 
-            if (val === null || val === undefined || val === "") {
-                td.textContent = "--";
-                if (DIFF_COLS.has(col)) td.className = "col-diff diff-na";
-                else if (NUM_COLS.has(col)) td.className = "col-num";
-            } else if (DIFF_COLS.has(col)) {
-                td.textContent = formatNum(val);
-                td.className = "col-diff " + diffClass(val);
-            } else if (NUM_COLS.has(col)) {
-                td.textContent = formatNum(val);
-                td.className = "col-num";
-            } else if (TEAM_COLS.has(col)) {
+        allCols.forEach(col => {
+            const td = document.createElement("td");
+            let val;
+
+            if (PASS_COLS.has(col)) {
+                val = passFields[col];
                 td.textContent = val;
-                td.className = col === "MarketFavoredTeam" ? "col-favored" : "col-team";
+                td.className = val === "Y" ? "pass-yes" : "pass-no";
             } else {
-                td.textContent = val;
+                val = row[col];
+
+                if (val === null || val === undefined || val === "") {
+                    td.textContent = "--";
+                    if (DIFF_COLS.has(col)) td.className = "col-diff";
+                    else if (NUM_COLS.has(col)) td.className = "col-num";
+                } else if (DIFF_COLS.has(col)) {
+                    td.textContent = formatNum(val);
+                    td.className = "col-diff";
+                } else if (NUM_COLS.has(col)) {
+                    td.textContent = formatNum(val);
+                    td.className = "col-num";
+                } else if (TEAM_COLS.has(col)) {
+                    td.textContent = val;
+                    td.className = col === "MarketFavoredTeam" ? "col-favored" : "col-team";
+                } else {
+                    td.textContent = val;
+                }
+
+                /* Green highlight for entire row when Total Pass = Y */
+                if (totalPassYes) {
+                    td.classList.add("row-pass-green");
+                }
             }
             tr.appendChild(td);
         });
@@ -478,13 +707,6 @@ function renderTable(name, columns, data) {
 function formatNum(v) {
     if (typeof v !== "number") return v;
     return Number.isInteger(v) ? v.toString() : v.toFixed(2);
-}
-
-function diffClass(v) {
-    if (v === null || v === undefined) return "diff-na";
-    if (v > 0) return "diff-pos";
-    if (v < 0) return "diff-neg";
-    return "diff-zero";
 }
 
 /* ====================================================================== */
@@ -501,19 +723,8 @@ function sortByColumn(tableName, col, colIdx) {
     }
 
     const tableData = tableName === "totals" ? rawData.totals : rawData.spreads;
-    const data = [...tableData.data];
+    renderTable(tableName, tableData.columns, tableData.data);
 
-    data.sort((a, b) => {
-        let va = a[col], vb = b[col];
-        if (va === null || va === undefined) va = ss.asc ? Infinity : -Infinity;
-        if (vb === null || vb === undefined) vb = ss.asc ? Infinity : -Infinity;
-        if (typeof va === "string") return ss.asc ? va.localeCompare(vb) : vb.localeCompare(va);
-        return ss.asc ? va - vb : vb - va;
-    });
-
-    renderTable(tableName, tableData.columns, data);
-
-    /* Show sorted wrapper */
     if (tableName === currentTab) {
         document.getElementById(tableName + "Wrapper").hidden = false;
     }
@@ -544,9 +755,8 @@ document.getElementById("autoRefreshToggle").addEventListener("change", function
 });
 
 /* ====================================================================== */
-/* Init                                                                   */
+/* Init — do NOT auto-fetch; wait for user to click Refresh               */
 /* ====================================================================== */
-fetchData();
 </script>
 </body>
 </html>
