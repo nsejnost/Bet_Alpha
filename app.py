@@ -42,6 +42,8 @@ from main import (
     KENPOM_TO_HASLA_MAP,
 )
 
+from scraper import scrape_kenpom, scrape_haslametrics, scrape_barttorvik
+
 try:
     from zoneinfo import ZoneInfo
 except ImportError:
@@ -69,11 +71,40 @@ def run_pipeline():
             "Set it before starting the app."
         )
 
-    workbook_path = fix_ios_excel(INPUT_WORKBOOK)
+    # --- KenPom: try web scrape, fall back to Excel ---
+    kp_source = "web"
+    try:
+        kp = scrape_kenpom()
+        print(f"[KenPom] Scraped {len(kp)} teams from kenpom.com")
+    except Exception as e:
+        print(f"[KenPom] Web scrape failed ({e}), falling back to Excel")
+        kp_source = "excel"
+        workbook_path = fix_ios_excel(INPUT_WORKBOOK)
+        kp = load_kenpom(workbook_path, KP_SHEET)
 
-    kp = load_kenpom(workbook_path, KP_SHEET)
-    hasla = load_haslametrics_local(workbook_path, HASLA_SHEET)
-    barttorvik = load_barttorvik(workbook_path, BARTTORVIK_SHEET)
+    # --- Haslametrics: try web scrape, fall back to Excel ---
+    hasla_source = "web"
+    try:
+        hasla = scrape_haslametrics()
+        print(f"[Hasla] Scraped {len(hasla)} matchups from haslametrics.com")
+    except Exception as e:
+        print(f"[Hasla] Web scrape failed ({e}), falling back to Excel")
+        hasla_source = "excel"
+        if kp_source != "excel":
+            workbook_path = fix_ios_excel(INPUT_WORKBOOK)
+        hasla = load_haslametrics_local(workbook_path, HASLA_SHEET)
+
+    # --- Barttorvik: try web scrape, fall back to Excel ---
+    bart_source = "web"
+    try:
+        barttorvik = scrape_barttorvik()
+        print(f"[Barttorvik] Scraped {len(barttorvik)} matchups from barttorvik.com")
+    except Exception as e:
+        print(f"[Barttorvik] Web scrape failed ({e}), falling back to Excel")
+        bart_source = "excel"
+        if kp_source != "excel" and hasla_source != "excel":
+            workbook_path = fix_ios_excel(INPUT_WORKBOOK)
+        barttorvik = load_barttorvik(workbook_path, BARTTORVIK_SHEET)
     payload = fetch_odds_api_markets(api_key)
     market = build_market_df_from_odds_api(payload)
 
@@ -82,6 +113,9 @@ def run_pipeline():
         "hasla_matchups": int(len(hasla)),
         "barttorvik_matchups": int(len(barttorvik)),
         "market_matchups": int(len(market)),
+        "kenpom_source": kp_source,
+        "hasla_source": hasla_source,
+        "barttorvik_source": bart_source,
     }
 
     if market.empty:

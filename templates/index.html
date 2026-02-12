@@ -82,6 +82,15 @@
             font-weight: 700;
             color: #1a1a2e;
         }
+        .stat-source {
+            font-size: 0.7em;
+            font-weight: 600;
+            padding: 1px 5px;
+            border-radius: 3px;
+            vertical-align: middle;
+        }
+        .src-web  { background: #d4edda; color: #155724; }
+        .src-excel { background: #fff3cd; color: #856404; }
         .updated-at {
             margin-left: auto;
             font-style: italic;
@@ -454,9 +463,9 @@
 
     <!-- Stats bar -->
     <div class="stats-bar" id="statsBar">
-        <span class="stat-item">KenPom teams: <span class="stat-val" id="statKP">--</span></span>
-        <span class="stat-item">Hasla matchups: <span class="stat-val" id="statHasla">--</span></span>
-        <span class="stat-item">Barttorvik matchups: <span class="stat-val" id="statBart">--</span></span>
+        <span class="stat-item">KenPom teams: <span class="stat-val" id="statKP">--</span> <span class="stat-source" id="statKPSource"></span></span>
+        <span class="stat-item">Hasla matchups: <span class="stat-val" id="statHasla">--</span> <span class="stat-source" id="statHaslaSource"></span></span>
+        <span class="stat-item">Barttorvik matchups: <span class="stat-val" id="statBart">--</span> <span class="stat-source" id="statBartSource"></span></span>
         <span class="stat-item">Market games: <span class="stat-val" id="statMarket">--</span></span>
         <span class="stat-item">Matched: <span class="stat-val" id="statTotal">--</span></span>
         <span class="updated-at" id="updatedAt"></span>
@@ -673,6 +682,16 @@ function updateStats(stats, updatedAt) {
     document.getElementById("statKP").textContent = stats.kenpom_teams;
     document.getElementById("statHasla").textContent = stats.hasla_matchups;
     document.getElementById("statBart").textContent = stats.barttorvik_matchups;
+    function srcBadge(id, src) {
+        var el = document.getElementById(id);
+        if (el && src) {
+            el.textContent = "(" + src + ")";
+            el.className = "stat-source " + (src === "web" ? "src-web" : "src-excel");
+        }
+    }
+    srcBadge("statKPSource", stats.kenpom_source);
+    srcBadge("statHaslaSource", stats.hasla_source);
+    srcBadge("statBartSource", stats.barttorvik_source);
     document.getElementById("statMarket").textContent = stats.market_matchups;
     document.getElementById("statTotal").textContent = stats.total_games;
     document.getElementById("updatedAt").textContent = updatedAt ? ("Updated: " + updatedAt) : "";
