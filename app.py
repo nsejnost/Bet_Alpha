@@ -79,7 +79,7 @@ def require_auth(f):
 # Simple in-memory cache so rapid refreshes don't hammer the Odds API
 # ---------------------------------------------------------------------------
 _cache = {"totals": None, "spreads": None, "stats": None, "ts": 0}
-CACHE_TTL_SECONDS = 300  # re-use data for 5 minutes
+CACHE_TTL_SECONDS = 1800  # re-use data for 30 minutes
 
 
 def run_pipeline():
