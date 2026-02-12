@@ -214,6 +214,8 @@ MASCOT_WORDS = [
     # Mascots from 2026-02-12 unmatched games
     "chargers", "pride", "blue hose", "golden panthers", "raiders",
     "seahawks", "sharks", "tommies", "trailblazers", "gauchos",
+    # Mascots from 2026-02-13 unmatched games
+    "golden griffins", "big red", "big green", "broncs",
 ]
 
 # =========================
@@ -859,6 +861,9 @@ NAME_MAP = {
     "se missouri st": "southeast missouri",
     "long beach st": "long beach st",
     "usc upstate": "usc upstate",
+
+    # Entries from 2026-02-13 unmatched games
+    "loyola": "loyola chicago",
 }
 
 # =========================
