@@ -48,10 +48,7 @@ def _fetch(url: str, timeout: int = 30) -> bytes:
 # ---------------------------------------------------------------------------
 
 def scrape_kenpom() -> pd.DataFrame:
-    """Scrape the KenPom ratings table.
-
-    KenPom requires a paid subscription for full access.  The public
-    landing page includes the ratings table with AdjTempo, AdjO, and AdjD.
+    """Scrape the KenPom ratings table from the public home page.
 
     Returns a DataFrame with columns:
         Team, Team_key, AdjTempo, AdjO, AdjD
@@ -72,7 +69,7 @@ def scrape_kenpom() -> pd.DataFrame:
     if table is None:
         raise ValueError(
             "Could not find the KenPom ratings table. "
-            "The page structure may have changed, or a login wall is blocking access."
+            "The page structure may have changed."
         )
 
     # Build column index from the first header row
