@@ -207,7 +207,6 @@
             font-size: .82rem;
             background: #fff;
             border-radius: 8px;
-            overflow: hidden;
             box-shadow: 0 1px 4px rgba(0,0,0,.08);
         }
         table.data-table thead th {
@@ -392,6 +391,41 @@
         td.row-pass-green { background: #d4edda; }
 
         /* ------------------------------------------------------------------ */
+        /* Sticky first 4 columns (Date, Time, Away, Home)                    */
+        /* ------------------------------------------------------------------ */
+        table.data-table.has-sticky-cols th:nth-child(1),
+        table.data-table.has-sticky-cols td:nth-child(1) { position: sticky; left: var(--sticky-left-0, 0); }
+        table.data-table.has-sticky-cols th:nth-child(2),
+        table.data-table.has-sticky-cols td:nth-child(2) { position: sticky; left: var(--sticky-left-1, 0); }
+        table.data-table.has-sticky-cols th:nth-child(3),
+        table.data-table.has-sticky-cols td:nth-child(3) { position: sticky; left: var(--sticky-left-2, 0); }
+        table.data-table.has-sticky-cols th:nth-child(4),
+        table.data-table.has-sticky-cols td:nth-child(4) { position: sticky; left: var(--sticky-left-3, 0); }
+
+        /* Body sticky cells: opaque background so content doesn't bleed through */
+        table.data-table.has-sticky-cols td:nth-child(-n+4) {
+            background: #fff;
+            z-index: 1;
+        }
+        table.data-table.has-sticky-cols tbody tr:nth-child(even) td:nth-child(-n+4) {
+            background: #fafbfc;
+        }
+        table.data-table.has-sticky-cols td.row-pass-green:nth-child(-n+4) {
+            background: #d4edda;
+        }
+
+        /* Header sticky cells: higher z-index (sticky in both directions) */
+        table.data-table.has-sticky-cols thead th:nth-child(-n+4) {
+            z-index: 4;
+        }
+
+        /* Subtle shadow on the last sticky column as a visual separator */
+        table.data-table.has-sticky-cols th:nth-child(4),
+        table.data-table.has-sticky-cols td:nth-child(4) {
+            box-shadow: 2px 0 4px rgba(0,0,0,.06);
+        }
+
+        /* ------------------------------------------------------------------ */
         /* Loading / Error states                                             */
         /* ------------------------------------------------------------------ */
         .loading-overlay {
@@ -482,6 +516,7 @@
                 Auto-refresh (5 min)
             </label>
             <button class="btn" id="refreshBtn" onclick="fetchData()">Refresh</button>
+            <button class="btn" id="csvBtn" onclick="exportCSV()" disabled>Export CSV</button>
         </div>
     </div>
 
@@ -817,6 +852,7 @@ async function fetchData() {
         }
 
         rawData = json;
+        document.getElementById("csvBtn").disabled = false;
         updateStats(json.stats, json.updated_at);
         renderTable("totals", json.totals.columns, json.totals.data);
         renderTable("spreads", json.spreads.columns, json.spreads.data);
@@ -1266,6 +1302,7 @@ function sortByColumn(tableName, col, colIdx) {
 
     if (tableName === currentTab) {
         document.getElementById(tableName + "Wrapper").hidden = false;
+        applyStickyColumns(tableName + "Table");
     }
 }
 
@@ -1280,6 +1317,117 @@ function switchTab(tab) {
     document.getElementById("totalsWrapper").hidden = (tab !== "totals");
     document.getElementById("spreadsWrapper").hidden = (tab !== "spreads");
     document.getElementById("unmatchedWrapper").hidden = (tab !== "unmatched");
+
+    /* Apply sticky columns after the active table becomes visible */
+    if (tab === "totals") applyStickyColumns("totalsTable");
+    else if (tab === "spreads") applyStickyColumns("spreadsTable");
+    else if (tab === "unmatched") applyStickyColumns("unmatchedTable");
+}
+
+/* ====================================================================== */
+/* Sticky columns — measure header widths and set CSS custom properties    */
+/* ====================================================================== */
+const STICKY_COL_COUNT = 4;
+
+function applyStickyColumns(tableId) {
+    const table = document.getElementById(tableId);
+    if (!table || !table.offsetParent) return;
+
+    const headerRow = table.querySelector("thead tr:first-child");
+    if (!headerRow || headerRow.children.length < STICKY_COL_COUNT) return;
+
+    let cumLeft = 0;
+    for (let i = 0; i < STICKY_COL_COUNT; i++) {
+        table.style.setProperty("--sticky-left-" + i, cumLeft + "px");
+        cumLeft += headerRow.children[i].getBoundingClientRect().width;
+    }
+    table.classList.add("has-sticky-cols");
+}
+
+/* ====================================================================== */
+/* Export CSV                                                              */
+/* ====================================================================== */
+function exportCSV() {
+    if (!rawData) return;
+
+    let csv, filename;
+
+    if (currentTab === "unmatched") {
+        const cols = UNMATCHED_COLS;
+        const rows = (rawData.unmatched && rawData.unmatched.data) ? rawData.unmatched.data : [];
+        filename = "unmatched_games.csv";
+        csv = cols.map(c => csvCell(UNMATCHED_LABELS[c] || c)).join(",") + "\n";
+        rows.forEach(row => {
+            csv += cols.map(c => csvCell(row[c])).join(",") + "\n";
+        });
+    } else {
+        const tabType = currentTab;
+        const allCols = currentTab === "totals" ? TOTALS_COL_ORDER : SPREADS_COL_ORDER;
+        const sourceData = currentTab === "totals" ? rawData.totals.data : rawData.spreads.data;
+        filename = currentTab + "_export.csv";
+
+        /* Replicate current sort */
+        let displayData = [...sourceData];
+        const ss = sortState[currentTab];
+        function _getVal(row, col, fields) {
+            return COMPUTED_COLS.has(col) ? fields[col] : row[col];
+        }
+        if (ss.col) {
+            displayData.sort((a, b) => {
+                const fa = computeFields(a, tabType), fb = computeFields(b, tabType);
+                let va = _getVal(a, ss.col, fa), vb = _getVal(b, ss.col, fb);
+                if (va === null || va === undefined) va = ss.asc ? Infinity : -Infinity;
+                if (vb === null || vb === undefined) vb = ss.asc ? Infinity : -Infinity;
+                if (typeof va === "string") return ss.asc ? va.localeCompare(vb) : vb.localeCompare(va);
+                return ss.asc ? va - vb : vb - va;
+            });
+        }
+
+        /* Replicate current filters */
+        const filters = filterState[currentTab] || {};
+        displayData = displayData.filter(row => {
+            const fields = computeFields(row, tabType);
+            for (const [col, selectedSet] of Object.entries(filters)) {
+                if (!selectedSet || selectedSet.size === 0) continue;
+                let val = _getVal(row, col, fields);
+                if (val === null || val === undefined || val === "") val = "--";
+                else if (typeof val === "number") val = formatNum(val);
+                else val = String(val);
+                if (!selectedSet.has(val)) return false;
+            }
+            return true;
+        });
+
+        /* Build CSV */
+        csv = allCols.map(c => csvCell(COL_LABELS[c] || c)).join(",") + "\n";
+        displayData.forEach(row => {
+            const fields = computeFields(row, tabType);
+            csv += allCols.map(c => csvCell(_getVal(row, c, fields))).join(",") + "\n";
+        });
+    }
+
+    downloadCSV(csv, filename);
+}
+
+function csvCell(val) {
+    if (val === null || val === undefined) return "";
+    const s = String(val);
+    if (s.includes(",") || s.includes('"') || s.includes("\n")) {
+        return '"' + s.replace(/"/g, '""') + '"';
+    }
+    return s;
+}
+
+function downloadCSV(csv, filename) {
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    link.style.display = "none";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(link.href);
 }
 
 /* ====================================================================== */
