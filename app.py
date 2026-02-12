@@ -77,7 +77,9 @@ def run_pipeline():
         kp = scrape_kenpom()
         print(f"[KenPom] Scraped {len(kp)} teams from kenpom.com")
     except Exception as e:
-        print(f"[KenPom] Web scrape failed ({e}), falling back to Excel")
+        import traceback
+        print(f"[KenPom] Web scrape failed ({type(e).__name__}: {e}), falling back to Excel")
+        traceback.print_exc()
         kp_source = "excel"
         workbook_path = fix_ios_excel(INPUT_WORKBOOK)
         kp = load_kenpom(workbook_path, KP_SHEET)
@@ -88,7 +90,9 @@ def run_pipeline():
         hasla = scrape_haslametrics()
         print(f"[Hasla] Scraped {len(hasla)} matchups from haslametrics.com")
     except Exception as e:
-        print(f"[Hasla] Web scrape failed ({e}), falling back to Excel")
+        import traceback
+        print(f"[Hasla] Web scrape failed ({type(e).__name__}: {e}), falling back to Excel")
+        traceback.print_exc()
         hasla_source = "excel"
         if kp_source != "excel":
             workbook_path = fix_ios_excel(INPUT_WORKBOOK)
@@ -100,7 +104,9 @@ def run_pipeline():
         barttorvik = scrape_barttorvik()
         print(f"[Barttorvik] Scraped {len(barttorvik)} matchups from barttorvik.com")
     except Exception as e:
-        print(f"[Barttorvik] Web scrape failed ({e}), falling back to Excel")
+        import traceback
+        print(f"[Barttorvik] Web scrape failed ({type(e).__name__}: {e}), falling back to Excel")
+        traceback.print_exc()
         bart_source = "excel"
         if kp_source != "excel" and hasla_source != "excel":
             workbook_path = fix_ios_excel(INPUT_WORKBOOK)

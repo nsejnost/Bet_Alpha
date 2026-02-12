@@ -12,6 +12,7 @@ import io
 import re
 import urllib.request
 import json
+import time
 
 import numpy as np
 import pandas as pd
@@ -33,11 +34,47 @@ _HEADERS = {
         "Chrome/124.0.0.0 Safari/537.36"
     ),
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Connection": "keep-alive",
+    "Upgrade-Insecure-Requests": "1",
 }
+
+# Create a reusable cloudscraper session (handles Cloudflare challenges)
+_scraper = None
+
+
+def _get_scraper():
+    """Lazily initialize a cloudscraper session."""
+    global _scraper
+    if _scraper is None:
+        try:
+            import cloudscraper
+            _scraper = cloudscraper.create_scraper(
+                browser={"browser": "chrome", "platform": "linux", "desktop": True},
+            )
+            print("[Scraper] Using cloudscraper for Cloudflare bypass")
+        except ImportError:
+            print("[Scraper] cloudscraper not installed, falling back to urllib")
+            _scraper = False  # sentinel: use urllib fallback
+    return _scraper
 
 
 def _fetch(url: str, timeout: int = 30) -> bytes:
-    """Download *url* and return raw bytes."""
+    """Download *url* and return raw bytes.
+
+    Uses cloudscraper (handles Cloudflare challenges) if available,
+    otherwise falls back to urllib.
+    """
+    scraper = _get_scraper()
+
+    if scraper:
+        # cloudscraper (handles Cloudflare "I'm Under Attack" + JS challenges)
+        resp = scraper.get(url, timeout=timeout)
+        resp.raise_for_status()
+        return resp.content
+
+    # Fallback: plain urllib
     req = urllib.request.Request(url, headers=_HEADERS)
     with urllib.request.urlopen(req, timeout=timeout) as resp:
         return resp.read()
@@ -375,7 +412,7 @@ def scrape_haslametrics() -> pd.DataFrame:
 
 
 # ---------------------------------------------------------------------------
-# Barttorvik  (http://barttorvik.com/2026_super_sked.json)
+# Barttorvik  (https://barttorvik.com/<year>_super_sked.json)
 # ---------------------------------------------------------------------------
 
 def scrape_barttorvik() -> pd.DataFrame:
@@ -392,24 +429,52 @@ def scrape_barttorvik() -> pd.DataFrame:
         MatchupKey_NoDate, BarttorvikTotal, BarttorvikSpread
     (same as load_barttorvik()).
     """
-    # Try JSON first, then CSV
+    # Determine the season year (the calendar year the season ends in).
+    # CBB seasons run Nov-Apr, so if we're in Nov or Dec the season end
+    # year is *next* calendar year; otherwise it's the current year.
+    from datetime import date as _date
+    today = _date.today()
+    season_year = today.year if today.month <= 10 else today.year + 1
+
+    # Try multiple URL variants – HTTPS first, then HTTP, JSON then CSV.
     json_data = None
-    try:
-        raw = _fetch("http://barttorvik.com/2026_super_sked.json").decode(
-            "utf-8", errors="replace"
-        )
-        json_data = json.loads(raw)
-    except Exception:
-        pass
+    urls_to_try = [
+        f"https://barttorvik.com/{season_year}_super_sked.json",
+        f"http://barttorvik.com/{season_year}_super_sked.json",
+    ]
+    last_err = None
+    for url in urls_to_try:
+        try:
+            raw = _fetch(url).decode("utf-8", errors="replace")
+            json_data = json.loads(raw)
+            print(f"[Barttorvik] Fetched JSON from {url}")
+            break
+        except Exception as e:
+            last_err = e
 
     if json_data is not None:
         b = pd.DataFrame(json_data)
     else:
         # Fall back to CSV
-        raw = _fetch("http://barttorvik.com/2026_super_sked.csv").decode(
-            "utf-8", errors="replace"
-        )
-        b = pd.read_csv(io.StringIO(raw))
+        csv_urls = [
+            f"https://barttorvik.com/{season_year}_super_sked.csv",
+            f"http://barttorvik.com/{season_year}_super_sked.csv",
+        ]
+        csv_fetched = False
+        for url in csv_urls:
+            try:
+                raw = _fetch(url).decode("utf-8", errors="replace")
+                b = pd.read_csv(io.StringIO(raw))
+                print(f"[Barttorvik] Fetched CSV from {url}")
+                csv_fetched = True
+                break
+            except Exception as e:
+                last_err = e
+        if not csv_fetched:
+            raise RuntimeError(
+                f"Could not fetch Barttorvik data from any endpoint. "
+                f"Last error: {last_err}"
+            )
 
     # Normalize column names (case-insensitive matching)
     col_renames = {}
