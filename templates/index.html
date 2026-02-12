@@ -202,7 +202,8 @@
         .table-wrapper[hidden] { display: none; }
 
         table.data-table {
-            width: 100%;
+            width: max-content;
+            min-width: 100%;
             border-collapse: collapse;
             font-size: .82rem;
             background: #fff;
@@ -517,6 +518,7 @@
             </label>
             <button class="btn" id="refreshBtn" onclick="fetchData()">Refresh</button>
             <button class="btn" id="csvBtn" onclick="exportCSV()" disabled>Export CSV</button>
+            <button class="btn" id="clearFiltersBtn" onclick="clearAllFilters()" disabled>Clear Filters</button>
         </div>
     </div>
 
@@ -853,6 +855,7 @@ async function fetchData() {
 
         rawData = json;
         document.getElementById("csvBtn").disabled = false;
+        document.getElementById("clearFiltersBtn").disabled = false;
         updateStats(json.stats, json.updated_at);
         renderTable("totals", json.totals.columns, json.totals.data);
         renderTable("spreads", json.spreads.columns, json.spreads.data);
@@ -1283,6 +1286,17 @@ function removeOrphanedDropdowns() {
     document.querySelectorAll("body > .filter-dropdown").forEach(d => d.remove());
 }
 document.addEventListener("click", closeAllFilterDropdowns);
+
+/* Clear all filters across all tabs and re-render the current tab */
+function clearAllFilters() {
+    filterState = { totals: {}, spreads: {} };
+    closeAllFilterDropdowns();
+    removeOrphanedDropdowns();
+    if (!rawData) return;
+    renderTable("totals", rawData.totals.columns, rawData.totals.data);
+    renderTable("spreads", rawData.spreads.columns, rawData.spreads.data);
+    switchTab(currentTab);
+}
 
 /* ====================================================================== */
 /* Sorting                                                                */

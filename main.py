@@ -2529,10 +2529,11 @@ def main() -> None:
             teamA_lookup = _normalize_lookup_key(g["TeamA_key"])
             teamB_lookup = _normalize_lookup_key(g["TeamB_key"])
             for norm_key, hasla_val in KENPOM_TO_HASLA_MAP.items():
-                if norm_key.lower() == teamA_lookup:
+                nk = _normalize_lookup_key(norm_key)
+                if nk == teamA_lookup:
                     hasla_teamA_name = hasla_val.lower()
                     hasla_teamA_norm = norm_key
-                if norm_key.lower() == teamB_lookup:
+                if nk == teamB_lookup:
                     hasla_teamB_name = hasla_val.lower()
                     hasla_teamB_norm = norm_key
 
