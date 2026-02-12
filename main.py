@@ -2108,6 +2108,28 @@ def load_barttorvik(workbook: str, sheet: str) -> pd.DataFrame:
     if missing:
         raise ValueError(f"{sheet} missing columns: {missing}. Found: {list(b.columns)}")
 
+    # Check for a Date column in the Excel sheet
+    has_date_col = "Date" in b.columns
+
+    def _parse_bart_date(raw: str) -> str:
+        raw = str(raw).strip()
+        if not raw or raw == "nan":
+            return ""
+        try:
+            parts_d = raw.split("/")
+            if len(parts_d) == 3:
+                m, d, y = int(parts_d[0]), int(parts_d[1]), int(parts_d[2])
+                if y < 100:
+                    y += 2000
+                return f"{y:04d}-{m:02d}-{d:02d}"
+        except Exception:
+            pass
+        # Try pandas parsing as fallback
+        try:
+            return pd.to_datetime(raw).strftime("%Y-%m-%d")
+        except Exception:
+            return ""
+
     rows = []
     for _, row in b.iterrows():
         matchup_raw = str(row.get("Matchup", "")).strip()
@@ -2196,6 +2218,10 @@ def load_barttorvik(workbook: str, sheet: str) -> pd.DataFrame:
 
             matchup_key = "|".join(sorted([away_normalized, home_normalized]))
 
+            game_date = ""
+            if has_date_col:
+                game_date = _parse_bart_date(str(row.get("Date", "")))
+
             rows.append({
                 "Away_orig": away_team,
                 "Home_orig": home_team,
@@ -2204,6 +2230,7 @@ def load_barttorvik(workbook: str, sheet: str) -> pd.DataFrame:
                 "MatchupKey_NoDate": matchup_key,
                 "BarttorvikTotal": round(total, 2),
                 "BarttorvikSpread": round(signed_spread, 2),
+                "BarttorvikDate": game_date,
             })
 
         except Exception as e:
@@ -2213,8 +2240,16 @@ def load_barttorvik(workbook: str, sheet: str) -> pd.DataFrame:
     if df.empty:
         return df
 
-    # Remove duplicates
-    df = df.drop_duplicates(subset=["MatchupKey_NoDate"], keep="first").reset_index(drop=True)
+    # Deduplicate by matchup + date when dates are available, otherwise by
+    # matchup only (keeping last so upcoming games take precedence).
+    if has_date_col and "BarttorvikDate" in df.columns:
+        df = df.drop_duplicates(
+            subset=["MatchupKey_NoDate", "BarttorvikDate"], keep="first"
+        ).reset_index(drop=True)
+    else:
+        df = df.drop_duplicates(
+            subset=["MatchupKey_NoDate"], keep="last"
+        ).reset_index(drop=True)
 
     return df
 
@@ -2550,11 +2585,23 @@ def main() -> None:
                 ]))
 
                 # Compare against Barttorvik keys (also normalized)
-                bart_row = barttorvik.loc[
+                bart_key_matches = barttorvik.loc[
                     barttorvik["MatchupKey_NoDate"].apply(
                         lambda x: "|".join(sorted([_normalize_lookup_key(p) for p in x.split("|")]))
                     ) == market_key_normalized
                 ]
+                bart_row = pd.DataFrame()
+                if not bart_key_matches.empty:
+                    # Prefer matching by game date when dates are available
+                    if "BarttorvikDate" in bart_key_matches.columns and game_date:
+                        date_match = bart_key_matches.loc[
+                            bart_key_matches["BarttorvikDate"] == game_date
+                        ]
+                        if not date_match.empty:
+                            bart_row = date_match
+                    # Fall back to last match (most recent/upcoming game)
+                    if bart_row.empty:
+                        bart_row = bart_key_matches.tail(1)
                 if not bart_row.empty:
                     barttorvik_total = round(float(bart_row["BarttorvikTotal"].iloc[0]), 2)
                     barttorvik_spread = round(float(bart_row["BarttorvikSpread"].iloc[0]), 2)

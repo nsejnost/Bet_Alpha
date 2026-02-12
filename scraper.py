@@ -507,15 +507,18 @@ def scrape_barttorvik() -> pd.DataFrame:
         b = b.rename(columns=col_renames)
 
     # When JSON returns an array of arrays (no column headers), columns are
-    # integer-indexed.  Auto-detect Matchup and T-Rank Line by content.
+    # integer-indexed.  Auto-detect Matchup, T-Rank Line, and Date by content.
     if "Matchup" not in b.columns or "T-Rank Line" not in b.columns:
         matchup_col = None
         trank_col = None
+        date_col = None
         # Matchup pattern: "250 Team at 197 Team" — require a leading rank
         # number to avoid false positives on conference columns like "Horz at Horz".
         matchup_re = re.compile(r"\d+\s+.+\s+(?:at|vs)\s+\d+\s+")
         # T-Rank Line: "Team -6.7, 76-69 (74%)" — comma after spread is optional
         trank_re = re.compile(r".+\s+-?\d+\.?\d*,?\s+\d+-\d+\s+\(\d+%\)")
+        # Date: "M/D/YY" or "MM/DD/YYYY"
+        date_re = re.compile(r"\d{1,2}/\d{1,2}/\d{2,4}")
         for _, sample_row in b.head(min(50, len(b))).iterrows():
             for col in b.columns:
                 val = str(sample_row[col]).strip()
@@ -523,6 +526,8 @@ def scrape_barttorvik() -> pd.DataFrame:
                     matchup_col = col
                 if trank_col is None and trank_re.match(val):
                     trank_col = col
+                if date_col is None and date_re.fullmatch(val):
+                    date_col = col
             if matchup_col is not None and trank_col is not None:
                 break
         renames = {}
@@ -530,6 +535,8 @@ def scrape_barttorvik() -> pd.DataFrame:
             renames[matchup_col] = "Matchup"
         if trank_col is not None and "T-Rank Line" not in b.columns:
             renames[trank_col] = "T-Rank Line"
+        if date_col is not None and "Date" not in b.columns:
+            renames[date_col] = "Date"
         if renames:
             b = b.rename(columns=renames)
             print(f"[Barttorvik] Auto-detected columns: {renames}")
@@ -553,6 +560,24 @@ def scrape_barttorvik() -> pd.DataFrame:
         "NBATV", "NBA", "STADIUM", "STREAMING", "LIVE", "YOUTUBE",
         "PARAMOUNT+", "SUMMIT", "LEAGUE",
     }
+
+    # Helper to parse Barttorvik dates (M/D/YY or MM/DD/YYYY) to YYYY-MM-DD
+    def _parse_bart_date(raw: str) -> str:
+        raw = raw.strip()
+        if not raw or raw == "nan":
+            return ""
+        try:
+            parts = raw.split("/")
+            if len(parts) == 3:
+                m, d, y = int(parts[0]), int(parts[1]), int(parts[2])
+                if y < 100:
+                    y += 2000
+                return f"{y:04d}-{m:02d}-{d:02d}"
+        except Exception:
+            pass
+        return ""
+
+    has_date_col = "Date" in b.columns
 
     rows = []
     for _, row in b.iterrows():
@@ -640,17 +665,21 @@ def scrape_barttorvik() -> pd.DataFrame:
 
             matchup_key = "|".join(sorted([away_normalized, home_normalized]))
 
-            rows.append(
-                {
-                    "Away_orig": away_team,
-                    "Home_orig": home_team,
-                    "Away_normalized": away_normalized,
-                    "Home_normalized": home_normalized,
-                    "MatchupKey_NoDate": matchup_key,
-                    "BarttorvikTotal": round(total, 2),
-                    "BarttorvikSpread": round(signed_spread, 2),
-                }
-            )
+            game_date = ""
+            if has_date_col:
+                game_date = _parse_bart_date(str(row.get("Date", "")))
+
+            row_data = {
+                "Away_orig": away_team,
+                "Home_orig": home_team,
+                "Away_normalized": away_normalized,
+                "Home_normalized": home_normalized,
+                "MatchupKey_NoDate": matchup_key,
+                "BarttorvikTotal": round(total, 2),
+                "BarttorvikSpread": round(signed_spread, 2),
+                "BarttorvikDate": game_date,
+            }
+            rows.append(row_data)
 
         except Exception:
             continue
@@ -659,8 +688,15 @@ def scrape_barttorvik() -> pd.DataFrame:
     if df.empty:
         return df
 
-    df = df.drop_duplicates(subset=["MatchupKey_NoDate"], keep="first").reset_index(
-        drop=True
-    )
+    # Deduplicate by matchup + date when dates are available, otherwise by
+    # matchup only (keeping last so upcoming games take precedence).
+    if has_date_col and "BarttorvikDate" in df.columns:
+        df = df.drop_duplicates(
+            subset=["MatchupKey_NoDate", "BarttorvikDate"], keep="first"
+        ).reset_index(drop=True)
+    else:
+        df = df.drop_duplicates(
+            subset=["MatchupKey_NoDate"], keep="last"
+        ).reset_index(drop=True)
 
     return df

@@ -303,7 +303,7 @@ def run_pipeline():
                         ]
                     )
                 )
-                bart_row = barttorvik.loc[
+                bart_key_matches = barttorvik.loc[
                     barttorvik["MatchupKey_NoDate"].apply(
                         lambda x: "|".join(
                             sorted(
@@ -316,6 +316,21 @@ def run_pipeline():
                     )
                     == market_key_normalized
                 ]
+                bart_row = pd.DataFrame()
+                if not bart_key_matches.empty:
+                    # Prefer matching by game date when dates are available
+                    if (
+                        "BarttorvikDate" in bart_key_matches.columns
+                        and game_date
+                    ):
+                        date_match = bart_key_matches.loc[
+                            bart_key_matches["BarttorvikDate"] == game_date
+                        ]
+                        if not date_match.empty:
+                            bart_row = date_match
+                    # Fall back to last match (most recent/upcoming game)
+                    if bart_row.empty:
+                        bart_row = bart_key_matches.tail(1)
                 if not bart_row.empty:
                     barttorvik_total = round(
                         float(bart_row["BarttorvikTotal"].iloc[0]), 2
