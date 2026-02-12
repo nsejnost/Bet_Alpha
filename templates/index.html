@@ -242,19 +242,17 @@
             flex-shrink: 0;
         }
 
-        /* Dropdown panel */
+        /* Dropdown panel — fixed position so table overflow:hidden won't clip */
         .filter-dropdown {
             display: none;
-            position: absolute;
-            top: 100%;
-            left: 0;
+            position: fixed;
             min-width: 180px;
             max-height: 280px;
             background: #1a1a2e;
             border: 1px solid rgba(255,255,255,.2);
             border-radius: 6px;
             box-shadow: 0 8px 24px rgba(0,0,0,.4);
-            z-index: 100;
+            z-index: 1000;
             flex-direction: column;
             overflow: hidden;
         }
@@ -787,6 +785,7 @@ function renderTable(name, columns, data) {
 
     /* Filter row (multi-select dropdowns) */
     filterRow.innerHTML = "";
+    removeOrphanedDropdowns();
     allCols.forEach(col => {
         const th = document.createElement("th");
         const selectedSet = filters[col] || new Set();
@@ -888,12 +887,20 @@ function renderTable(name, columns, data) {
             renderTable(name, columns, data);
         });
 
-        /* Toggle dropdown */
+        /* Toggle dropdown — append to body with fixed positioning */
         trigger.addEventListener("click", function(e) {
             e.stopPropagation();
             const isOpen = dropdown.classList.contains("open");
             closeAllFilterDropdowns();
             if (!isOpen) {
+                /* Append to body so table overflow:hidden doesn't clip */
+                if (!dropdown.parentElement || dropdown.parentElement !== document.body) {
+                    document.body.appendChild(dropdown);
+                }
+                /* Position below the trigger button */
+                const rect = trigger.getBoundingClientRect();
+                dropdown.style.top = rect.bottom + "px";
+                dropdown.style.left = rect.left + "px";
                 dropdown.classList.add("open");
                 searchInput.value = "";
                 searchInput.dispatchEvent(new Event("input"));
@@ -907,7 +914,6 @@ function renderTable(name, columns, data) {
         });
 
         th.appendChild(trigger);
-        th.appendChild(dropdown);
         filterRow.appendChild(th);
     });
 
@@ -966,7 +972,13 @@ function formatNum(v) {
 /* Filter dropdown helpers                                                */
 /* ====================================================================== */
 function closeAllFilterDropdowns() {
-    document.querySelectorAll(".filter-dropdown.open").forEach(d => d.classList.remove("open"));
+    document.querySelectorAll(".filter-dropdown.open").forEach(d => {
+        d.classList.remove("open");
+    });
+}
+/* Remove any body-appended dropdowns before re-rendering */
+function removeOrphanedDropdowns() {
+    document.querySelectorAll("body > .filter-dropdown").forEach(d => d.remove());
 }
 document.addEventListener("click", closeAllFilterDropdowns);
 
