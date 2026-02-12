@@ -659,17 +659,153 @@
             font-size: .92rem;
         }
 
+        /* ------------------------------------------------------------------ */
+        /* Mobile card view                                                    */
+        /* ------------------------------------------------------------------ */
+        .view-toggle {
+            display: none;           /* hidden on desktop */
+            background: rgba(255,255,255,.15);
+            color: #fff;
+            border: 1px solid rgba(255,255,255,.25);
+            padding: 7px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: .8rem;
+            font-weight: 500;
+        }
+        .view-toggle:hover { background: rgba(255,255,255,.25); }
+
+        .card-container {
+            display: none;
+            padding: 12px;
+            gap: 12px;
+            flex-direction: column;
+        }
+        .game-card {
+            background: #fff;
+            border-radius: 10px;
+            box-shadow: 0 1px 6px rgba(0,0,0,.1);
+            overflow: hidden;
+        }
+        .game-card.card-pass-green {
+            border-left: 4px solid #28a745;
+        }
+        .card-header {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #fff;
+            padding: 10px 14px;
+        }
+        .card-header .card-teams {
+            font-size: .95rem;
+            font-weight: 700;
+        }
+        .card-header .card-meta {
+            font-size: .72rem;
+            opacity: .75;
+            margin-top: 2px;
+        }
+        .card-body {
+            padding: 10px 14px;
+        }
+        .card-section {
+            margin-bottom: 8px;
+        }
+        .card-section:last-child {
+            margin-bottom: 0;
+        }
+        .card-section-label {
+            font-size: .68rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            color: #888;
+            letter-spacing: .4px;
+            margin-bottom: 4px;
+        }
+        .card-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4px 12px;
+        }
+        .card-grid-3 {
+            grid-template-columns: 1fr 1fr 1fr;
+        }
+        .card-item {
+            display: flex;
+            justify-content: space-between;
+            font-size: .78rem;
+            padding: 2px 0;
+        }
+        .card-item-label {
+            color: #888;
+        }
+        .card-item-value {
+            font-weight: 600;
+            font-variant-numeric: tabular-nums;
+        }
+        .card-pass-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 4px;
+        }
+        .card-pass-tag {
+            font-size: .72rem;
+            font-weight: 700;
+            padding: 2px 8px;
+            border-radius: 4px;
+        }
+        .card-pass-tag.yes { background: #d4edda; color: #155724; }
+        .card-pass-tag.no  { background: #f8d7da; color: #721c24; }
+        .card-footer {
+            border-top: 1px solid #f0f0f0;
+            padding: 8px 14px;
+            display: flex;
+            justify-content: flex-end;
+        }
+
         @media (max-width: 768px) {
             .header { padding: 14px 16px; }
             .header h1 { font-size: 1.1rem; }
-            .stats-bar { padding: 8px 16px; gap: 12px; }
-            .threshold-section { padding: 12px 16px 0; }
-            .tab-bar { padding: 0 16px; }
-            .tab-btn { padding: 10px 16px; font-size: .88rem; }
+            .stats-bar { padding: 8px 12px; gap: 8px; font-size: .74rem; }
+            .stats-bar .stat-item { font-size: .72rem; }
+            .stats-bar .updated-at { margin-left: 0; width: 100%; }
+            .threshold-section { padding: 12px 12px 0; overflow-x: auto; }
+            .tab-bar { padding: 0 8px; overflow-x: auto; }
+            .tab-btn { padding: 10px 14px; font-size: .84rem; white-space: nowrap; }
             .table-wrapper { padding: 12px 8px; }
             td, table.data-table thead th { padding: 6px 8px; font-size: .75rem; }
             .modal-box { width: 98vw; padding: 16px; }
             .accuracy-wrapper { padding: 12px 8px; }
+
+            /* Show view toggle on mobile */
+            .view-toggle { display: inline-flex; align-items: center; gap: 4px; }
+
+            /* Disable sticky columns on mobile for better scrolling */
+            table.data-table.has-sticky-cols th:nth-child(1),
+            table.data-table.has-sticky-cols td:nth-child(1),
+            table.data-table.has-sticky-cols th:nth-child(2),
+            table.data-table.has-sticky-cols td:nth-child(2),
+            table.data-table.has-sticky-cols th:nth-child(3),
+            table.data-table.has-sticky-cols td:nth-child(3),
+            table.data-table.has-sticky-cols th:nth-child(4),
+            table.data-table.has-sticky-cols td:nth-child(4) {
+                position: static;
+                left: auto;
+                z-index: auto;
+                box-shadow: none;
+            }
+            table.data-table.has-sticky-cols thead th:nth-child(-n+4) {
+                z-index: 2;   /* keep normal header z-index only */
+            }
+
+            /* Card view active on mobile by default */
+            .table-wrapper.mobile-cards-active { display: none !important; }
+            .card-container.mobile-cards-active { display: flex !important; }
+
+            /* Header controls wrap better */
+            .header { flex-direction: column; align-items: flex-start; }
+            .header-controls { flex-wrap: wrap; gap: 8px; width: 100%; }
+            .header-controls .btn { font-size: .78rem; padding: 6px 12px; }
         }
     </style>
 </head>
@@ -686,6 +822,7 @@
             <button class="btn" id="refreshBtn" onclick="fetchData()">Refresh</button>
             <button class="btn" id="csvBtn" onclick="exportCSV()" disabled>Export CSV</button>
             <button class="btn" id="clearFiltersBtn" onclick="clearAllFilters()" disabled>Clear Filters</button>
+            <button class="view-toggle" id="viewToggleBtn" onclick="toggleMobileView()">Table View</button>
         </div>
     </div>
 
@@ -771,7 +908,7 @@
     </div>
 
     <!-- Tables -->
-    <div class="table-wrapper" id="totalsWrapper" hidden>
+    <div class="table-wrapper mobile-cards-active" id="totalsWrapper" hidden>
         <table class="data-table" id="totalsTable">
             <thead>
                 <tr id="totalsHead"></tr>
@@ -780,7 +917,9 @@
             <tbody id="totalsBody"></tbody>
         </table>
     </div>
-    <div class="table-wrapper" id="spreadsWrapper" hidden>
+    <div class="card-container mobile-cards-active" id="totalsCards" hidden></div>
+
+    <div class="table-wrapper mobile-cards-active" id="spreadsWrapper" hidden>
         <table class="data-table" id="spreadsTable">
             <thead>
                 <tr id="spreadsHead"></tr>
@@ -789,6 +928,7 @@
             <tbody id="spreadsBody"></tbody>
         </table>
     </div>
+    <div class="card-container mobile-cards-active" id="spreadsCards" hidden></div>
     <div class="table-wrapper" id="unmatchedWrapper" hidden>
         <div id="unmatchedEmpty" class="welcome-msg" style="display:none;">
             All market games matched successfully.
@@ -1048,6 +1188,8 @@ async function fetchData() {
     document.getElementById("totalsWrapper").hidden = true;
     document.getElementById("spreadsWrapper").hidden = true;
     document.getElementById("unmatchedWrapper").hidden = true;
+    document.getElementById("totalsCards").hidden = true;
+    document.getElementById("spreadsCards").hidden = true;
 
     try {
         const resp = await fetch("/api/data");
@@ -1426,6 +1568,9 @@ function renderTable(name, columns, data, bodyOnly) {
     /* Recalculate sticky column positions after every render (column widths
        can change when filters add/remove rows in auto table layout). */
     applyStickyColumns(name + "Table");
+
+    /* Also render card view for mobile */
+    renderCards(name);
 }
 
 /* ====================================================================== */
@@ -1569,6 +1714,10 @@ function switchTab(tab) {
     document.getElementById("unmatchedWrapper").hidden = (tab !== "unmatched");
     document.getElementById("accuracyWrapper").hidden = (tab !== "accuracy");
 
+    /* Show/hide card containers for mobile */
+    document.getElementById("totalsCards").hidden = (tab !== "totals");
+    document.getElementById("spreadsCards").hidden = (tab !== "spreads");
+
     /* Apply sticky columns after the active table becomes visible */
     if (tab === "totals") applyStickyColumns("totalsTable");
     else if (tab === "spreads") applyStickyColumns("spreadsTable");
@@ -1594,6 +1743,206 @@ function applyStickyColumns(tableId) {
         cumLeft += headerRow.children[i].getBoundingClientRect().width;
     }
     table.classList.add("has-sticky-cols");
+}
+
+/* ====================================================================== */
+/* Mobile card view                                                        */
+/* ====================================================================== */
+let mobileCardsActive = true;  /* default to cards on mobile */
+
+function isMobileWidth() {
+    return window.matchMedia("(max-width: 768px)").matches;
+}
+
+function toggleMobileView() {
+    mobileCardsActive = !mobileCardsActive;
+    const btn = document.getElementById("viewToggleBtn");
+    btn.textContent = mobileCardsActive ? "Table View" : "Card View";
+
+    const wrappers = document.querySelectorAll(".table-wrapper, .card-container");
+    wrappers.forEach(el => {
+        if (mobileCardsActive) {
+            el.classList.add("mobile-cards-active");
+        } else {
+            el.classList.remove("mobile-cards-active");
+        }
+    });
+
+    /* Re-render cards if switching to card view */
+    if (mobileCardsActive && rawData) {
+        if (currentTab === "totals" || currentTab === "spreads") {
+            renderCards(currentTab);
+        }
+    }
+}
+
+function renderCards(name) {
+    const containerId = name + "Cards";
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    const tabType = name;
+    const allCols = name === "totals" ? TOTALS_COL_ORDER : SPREADS_COL_ORDER;
+    const dataKey = name;
+    const sourceData = rawData && rawData[dataKey] && rawData[dataKey].data ? rawData[dataKey].data : [];
+
+    /* Apply same sorting and filtering as table */
+    let displayData = [...sourceData];
+    const ss = sortState[name];
+    if (ss.col) {
+        displayData.sort((a, b) => {
+            const fa = computeFields(a, tabType), fb = computeFields(b, tabType);
+            let va = COMPUTED_COLS.has(ss.col) ? fa[ss.col] : a[ss.col];
+            let vb = COMPUTED_COLS.has(ss.col) ? fb[ss.col] : b[ss.col];
+            if (va === null || va === undefined) va = ss.asc ? Infinity : -Infinity;
+            if (vb === null || vb === undefined) vb = ss.asc ? Infinity : -Infinity;
+            if (typeof va === "string") return ss.asc ? va.localeCompare(vb) : vb.localeCompare(va);
+            return ss.asc ? va - vb : vb - va;
+        });
+    }
+    const filters = filterState[name] || {};
+    displayData = displayData.filter(row => {
+        const fields = computeFields(row, tabType);
+        for (const [col, selectedSet] of Object.entries(filters)) {
+            if (!selectedSet || selectedSet.size === 0) continue;
+            let val = COMPUTED_COLS.has(col) ? fields[col] : row[col];
+            if (val === null || val === undefined || val === "") val = "--";
+            else if (typeof val === "number") val = formatNum(val);
+            else val = String(val);
+            if (!selectedSet.has(val)) return false;
+        }
+        return true;
+    });
+
+    container.innerHTML = "";
+
+    if (displayData.length === 0) {
+        container.innerHTML = '<div style="text-align:center;padding:40px 16px;color:#888;font-size:.88rem;">No games to display.</div>';
+        return;
+    }
+
+    const isTotals = (name === "totals");
+
+    displayData.forEach(row => {
+        const fields = computeFields(row, tabType);
+        const totalPassYes = fields.TotalPass === "Y";
+
+        const card = document.createElement("div");
+        card.className = "game-card" + (totalPassYes ? " card-pass-green" : "");
+
+        /* ---- Header: Teams + date/time ---- */
+        const header = document.createElement("div");
+        header.className = "card-header";
+        const teams = document.createElement("div");
+        teams.className = "card-teams";
+        teams.textContent = (row.TeamA || "--") + "  vs  " + (row.TeamB || "--");
+        const meta = document.createElement("div");
+        meta.className = "card-meta";
+        meta.textContent = (row.Game_Date || "") + "  ·  " + (row.Game_Time || "");
+        header.appendChild(teams);
+        header.appendChild(meta);
+        card.appendChild(header);
+
+        /* ---- Body ---- */
+        const body = document.createElement("div");
+        body.className = "card-body";
+
+        if (isTotals) {
+            /* Market & Model Lines */
+            const linesSection = document.createElement("div");
+            linesSection.className = "card-section";
+            linesSection.innerHTML = '<div class="card-section-label">Lines</div>'
+                + '<div class="card-grid">'
+                + cardItem("Market", row.ClosingTotal)
+                + cardItem("KenPom", row.KenPomTotal)
+                + cardItem("Hasla", row.HaslaTotal)
+                + cardItem("Barttorvik", row.BarttorvikTotal)
+                + cardItem("Wtd Avg", fields.WtdAvgTotal)
+                + '</div>';
+            body.appendChild(linesSection);
+
+            /* Differences */
+            const diffSection = document.createElement("div");
+            diffSection.className = "card-section";
+            diffSection.innerHTML = '<div class="card-section-label">Market \u2212 Model</div>'
+                + '<div class="card-grid">'
+                + cardItem("KP", row.MarketMinusKenPom)
+                + cardItem("Hasla", row.MarketMinusHasla)
+                + cardItem("Bart", row.MarketMinusBarttorvik)
+                + cardItem("Wtd Avg", fields.MarketMinusWtdAvg)
+                + '</div>';
+            body.appendChild(diffSection);
+        } else {
+            /* Spreads tab */
+            const favored = row.MarketFavoredTeam || "--";
+            const spreadSection = document.createElement("div");
+            spreadSection.className = "card-section";
+            spreadSection.innerHTML = '<div class="card-section-label">Spreads (Fav: ' + escapeHtml(favored) + ')</div>'
+                + '<div class="card-grid">'
+                + cardItem("Market", row.ClosingSpread)
+                + cardItem("KenPom", row.KenPomSpread)
+                + cardItem("Hasla", row.HaslaSpread)
+                + cardItem("Barttorvik", row.BarttorvikSpread)
+                + cardItem("Wtd Avg", fields.WtdAvgSpread)
+                + '</div>';
+            body.appendChild(spreadSection);
+
+            /* Spread differences */
+            const diffSection = document.createElement("div");
+            diffSection.className = "card-section";
+            diffSection.innerHTML = '<div class="card-section-label">Market \u2212 Model</div>'
+                + '<div class="card-grid">'
+                + cardItem("KP", row.MarketMinusKenPomSpread)
+                + cardItem("Hasla", row.MarketMinusHaslaSpread)
+                + cardItem("Bart", row.MarketMinusBarttorvikSpread)
+                + cardItem("Wtd Avg", fields.MarketMinusWtdAvgSpread)
+                + '</div>';
+            body.appendChild(diffSection);
+        }
+
+        /* Pass results */
+        const passSection = document.createElement("div");
+        passSection.className = "card-section";
+        passSection.innerHTML = '<div class="card-section-label">Pass</div>'
+            + '<div class="card-pass-row">'
+            + passTag("KP", fields.KpPass)
+            + passTag("Hasla", fields.HaslaPass)
+            + passTag("Bart", fields.BarttorvikPass)
+            + passTag("Wtd Avg", fields.WtdAvgPass)
+            + passTag("Total", fields.TotalPass)
+            + '</div>';
+        body.appendChild(passSection);
+
+        card.appendChild(body);
+
+        /* ---- Footer: History button ---- */
+        const eventId = row.EventID || "";
+        if (eventId) {
+            const footer = document.createElement("div");
+            footer.className = "card-footer";
+            const btn = document.createElement("button");
+            btn.className = "history-btn";
+            btn.textContent = "View History";
+            btn.onclick = function() {
+                openHistoryModal(eventId, row.TeamA || "", row.TeamB || "");
+            };
+            footer.appendChild(btn);
+            card.appendChild(footer);
+        }
+
+        container.appendChild(card);
+    });
+}
+
+function cardItem(label, val) {
+    const display = (val === null || val === undefined || val === "") ? "--" : (typeof val === "number" ? formatNum(val) : val);
+    return '<div class="card-item"><span class="card-item-label">' + escapeHtml(label)
+         + '</span><span class="card-item-value">' + escapeHtml(String(display)) + '</span></div>';
+}
+
+function passTag(label, val) {
+    const cls = val === "Y" ? "yes" : "no";
+    return '<span class="card-pass-tag ' + cls + '">' + escapeHtml(label) + ': ' + escapeHtml(val || "--") + '</span>';
 }
 
 /* ====================================================================== */
