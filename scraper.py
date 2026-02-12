@@ -109,29 +109,44 @@ def scrape_kenpom() -> pd.DataFrame:
             "The page structure may have changed."
         )
 
-    # Build column index from the first header row
+    # Build column index from the header rows.
+    # KenPom uses multi-row headers; the actual column names (Team, AdjO,
+    # AdjD, AdjT …) may be in the second (or later) row, while the first
+    # row contains group labels like "Strength of Schedule".
     thead = table.find("thead")
-    header_row = thead.find_all("tr")[0] if thead else None
-    if header_row is None:
+    if thead is None:
         raise ValueError("Could not find table header row on KenPom page.")
 
-    headers = []
-    for th in header_row.find_all("th"):
-        headers.append(th.get_text(strip=True))
+    header_rows = thead.find_all("tr")
+    if not header_rows:
+        raise ValueError("Could not find table header row on KenPom page.")
 
-    # Locate required column indices by header name
-    # KenPom headers: Rk, Team, Conf, W-L, AdjEM, AdjO, AdjD, AdjT, Luck, ...
     col_map = {}
-    for i, h in enumerate(headers):
-        h_lower = h.lower().strip()
-        if h_lower == "team":
-            col_map["Team"] = i
-        elif h_lower in ("adjt", "adjtempo"):
-            col_map["AdjTempo"] = i
-        elif h_lower in ("adjo",):
-            col_map["AdjO"] = i
-        elif h_lower in ("adjd",):
-            col_map["AdjD"] = i
+    headers = []  # keep the best header list for error messages
+
+    for header_row in header_rows:
+        current_headers = []
+        for th in header_row.find_all("th"):
+            current_headers.append(th.get_text(strip=True))
+
+        # Locate required column indices by header name
+        # KenPom headers: Rk, Team, Conf, W-L, AdjEM, AdjO, AdjD, AdjT, Luck, ...
+        current_map = {}
+        for i, h in enumerate(current_headers):
+            h_lower = h.lower().strip()
+            if h_lower == "team":
+                current_map["Team"] = i
+            elif h_lower in ("adjt", "adjtempo"):
+                current_map["AdjTempo"] = i
+            elif h_lower in ("adjo",):
+                current_map["AdjO"] = i
+            elif h_lower in ("adjd",):
+                current_map["AdjD"] = i
+
+        # Use this row if it has more of the needed columns than previous rows
+        if len(current_map) > len(col_map):
+            col_map = current_map
+            headers = current_headers
 
     needed = ["Team", "AdjTempo", "AdjO", "AdjD"]
     missing = [c for c in needed if c not in col_map]
@@ -479,7 +494,7 @@ def scrape_barttorvik() -> pd.DataFrame:
     # Normalize column names (case-insensitive matching)
     col_renames = {}
     for col in b.columns:
-        cl = col.strip().lower()
+        cl = str(col).strip().lower()
         if cl == "matchup" and col != "Matchup":
             col_renames[col] = "Matchup"
         elif cl == "t-rank line" and col != "T-Rank Line":
