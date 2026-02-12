@@ -211,6 +211,9 @@ MASCOT_WORDS = [
     "blue raiders", "hilltoppers", "red wolves", "warhawks", "trojans",
     "monarchs", "49ers", "spartans", "seawolves", "great danes", "retrievers",
     "catamounts", "black bears", "screaming eagles",
+    # Mascots from 2026-02-12 unmatched games
+    "chargers", "pride", "blue hose", "golden panthers", "raiders",
+    "seahawks", "sharks", "tommies", "trailblazers", "gauchos",
 ]
 
 # =========================
@@ -842,6 +845,20 @@ NAME_MAP = {
     "colgate raiders": "colgate",
     "boston univ": "Boston U.",
     "queens university": "Queens",
+
+    # Entries from 2026-02-12 unmatched games
+    "central connecticut st": "central connecticut",
+    "florida int'l": "fiu",
+    "st francis pa": "saint francis",
+    "fort wayne": "purdue fort wayne",
+    "south carolina upstate": "usc upstate",
+    "n colorado": "northern colorado",
+    "st thomas mn": "st thomas",
+    "arkansas little rock": "little rock",
+    "tenn martin": "tennessee martin",
+    "se missouri st": "southeast missouri",
+    "long beach st": "long beach st",
+    "usc upstate": "usc upstate",
 }
 
 # =========================
@@ -1003,6 +1020,9 @@ NORMALIZED_TO_KENPOM = {
     "new haven": "New Haven",
     "mercyhurst": "Mercyhurst",
     "west georgia": "West Georgia",
+    "usc upstate": "USC Upstate",
+    "little rock": "Little Rock",
+    "liu": "LIU",
 }
 
 # =========================
@@ -1784,6 +1804,9 @@ def norm_team(x: Any) -> str:
 
     # Remove other parenthetical content (like rankings)
     s = re.sub(r"\(.*?\)", "", s)
+
+    # Remove numeric mascots before stripping digits (e.g. "49ers")
+    s = re.sub(r"\b49ers\b", "", s, flags=re.IGNORECASE)
 
     # Keep only letters, spaces, apostrophes, and & symbol
     s = re.sub(r"[^a-z\s'&]", " ", s)
