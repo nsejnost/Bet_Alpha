@@ -207,8 +207,11 @@
             background: #232946;
             padding: 4px 6px;
             cursor: default;
+            position: relative;
         }
-        table.data-table thead tr.filter-row select {
+
+        /* Multi-select dropdown trigger button */
+        .filter-trigger {
             width: 100%;
             padding: 3px 4px;
             border: 1px solid rgba(255,255,255,.3);
@@ -217,16 +220,121 @@
             background: rgba(255,255,255,.12);
             color: #fff;
             cursor: pointer;
-            appearance: auto;
+            text-align: left;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 4px;
+            min-width: 60px;
         }
-        table.data-table thead tr.filter-row select option {
-            background: #1a1a2e;
-            color: #fff;
-        }
-        table.data-table thead tr.filter-row select:focus {
-            outline: none;
-            border-color: #e94560;
+        .filter-trigger:hover {
             background: rgba(255,255,255,.2);
+        }
+        .filter-trigger.active-filter {
+            border-color: #e94560;
+            background: rgba(233,69,96,.25);
+        }
+        .filter-trigger .arrow {
+            font-size: .6rem;
+            flex-shrink: 0;
+        }
+
+        /* Dropdown panel */
+        .filter-dropdown {
+            display: none;
+            position: absolute;
+            top: 100%;
+            left: 0;
+            min-width: 180px;
+            max-height: 280px;
+            background: #1a1a2e;
+            border: 1px solid rgba(255,255,255,.2);
+            border-radius: 6px;
+            box-shadow: 0 8px 24px rgba(0,0,0,.4);
+            z-index: 100;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .filter-dropdown.open {
+            display: flex;
+        }
+
+        /* Search input inside dropdown */
+        .filter-search {
+            width: 100%;
+            padding: 6px 8px;
+            border: none;
+            border-bottom: 1px solid rgba(255,255,255,.15);
+            font-size: .74rem;
+            background: rgba(255,255,255,.08);
+            color: #fff;
+            outline: none;
+        }
+        .filter-search::placeholder {
+            color: rgba(255,255,255,.4);
+        }
+        .filter-search:focus {
+            background: rgba(255,255,255,.14);
+        }
+
+        /* Action buttons row */
+        .filter-actions {
+            display: flex;
+            border-bottom: 1px solid rgba(255,255,255,.15);
+        }
+        .filter-action-btn {
+            flex: 1;
+            padding: 5px 4px;
+            border: none;
+            background: none;
+            color: #e94560;
+            font-size: .7rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background .15s;
+        }
+        .filter-action-btn:hover {
+            background: rgba(233,69,96,.15);
+        }
+        .filter-action-btn + .filter-action-btn {
+            border-left: 1px solid rgba(255,255,255,.15);
+        }
+
+        /* Checkbox list */
+        .filter-options {
+            overflow-y: auto;
+            max-height: 200px;
+            padding: 2px 0;
+        }
+        .filter-option {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 8px;
+            font-size: .74rem;
+            color: #fff;
+            cursor: pointer;
+            transition: background .1s;
+        }
+        .filter-option:hover {
+            background: rgba(255,255,255,.1);
+        }
+        .filter-option input[type="checkbox"] {
+            accent-color: #e94560;
+            cursor: pointer;
+            flex-shrink: 0;
+        }
+        .filter-option label {
+            cursor: pointer;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .filter-option.hidden {
+            display: none;
         }
 
         table.data-table tbody tr { border-bottom: 1px solid #f0f0f0; }
@@ -643,12 +751,12 @@ function renderTable(name, columns, data) {
         });
     });
 
-    /* Apply filters */
+    /* Apply filters (multi-select: filterState[name][col] is a Set) */
     const filters = filterState[name] || {};
     displayData = displayData.filter(row => {
         const pass = computePassFields(row, tabType);
-        for (const [col, selected] of Object.entries(filters)) {
-            if (!selected) continue;
+        for (const [col, selectedSet] of Object.entries(filters)) {
+            if (!selectedSet || selectedSet.size === 0) continue;
             let val;
             if (PASS_COLS.has(col)) {
                 val = pass[col];
@@ -658,7 +766,7 @@ function renderTable(name, columns, data) {
             if (val === null || val === undefined || val === "") val = "--";
             else if (typeof val === "number") val = formatNum(val);
             else val = String(val);
-            if (val !== selected) return false;
+            if (!selectedSet.has(val)) return false;
         }
         return true;
     });
@@ -677,32 +785,129 @@ function renderTable(name, columns, data) {
         headRow.appendChild(th);
     });
 
-    /* Filter row (dropdowns) */
+    /* Filter row (multi-select dropdowns) */
     filterRow.innerHTML = "";
     allCols.forEach(col => {
         const th = document.createElement("th");
-        const select = document.createElement("select");
+        const selectedSet = filters[col] || new Set();
+        const vals = uniqueVals[col] || [];
 
-        /* "All" option */
-        const allOpt = document.createElement("option");
-        allOpt.value = "";
-        allOpt.textContent = "All";
-        select.appendChild(allOpt);
+        /* Trigger button */
+        const trigger = document.createElement("button");
+        trigger.className = "filter-trigger" + (selectedSet.size > 0 ? " active-filter" : "");
+        const triggerLabel = selectedSet.size === 0
+            ? "All"
+            : selectedSet.size === 1
+                ? [...selectedSet][0]
+                : selectedSet.size + " selected";
+        trigger.innerHTML = '<span>' + escapeHtml(triggerLabel) + '</span><span class="arrow">&#9662;</span>';
 
-        /* One option per unique value */
-        (uniqueVals[col] || []).forEach(v => {
-            const opt = document.createElement("option");
-            opt.value = v;
-            opt.textContent = v;
-            if (filters[col] === v) opt.selected = true;
-            select.appendChild(opt);
+        /* Dropdown panel */
+        const dropdown = document.createElement("div");
+        dropdown.className = "filter-dropdown";
+
+        /* Search input */
+        const searchInput = document.createElement("input");
+        searchInput.type = "text";
+        searchInput.className = "filter-search";
+        searchInput.placeholder = "Search\u2026";
+        dropdown.appendChild(searchInput);
+
+        /* Action buttons: Select All | Clear Filter */
+        const actionsDiv = document.createElement("div");
+        actionsDiv.className = "filter-actions";
+
+        const selectAllBtn = document.createElement("button");
+        selectAllBtn.className = "filter-action-btn";
+        selectAllBtn.textContent = "Select All";
+        actionsDiv.appendChild(selectAllBtn);
+
+        const clearBtn = document.createElement("button");
+        clearBtn.className = "filter-action-btn";
+        clearBtn.textContent = "Clear Filter";
+        actionsDiv.appendChild(clearBtn);
+
+        dropdown.appendChild(actionsDiv);
+
+        /* Checkbox options container */
+        const optionsDiv = document.createElement("div");
+        optionsDiv.className = "filter-options";
+
+        const checkboxes = [];
+        vals.forEach(v => {
+            const optionDiv = document.createElement("div");
+            optionDiv.className = "filter-option";
+
+            const cb = document.createElement("input");
+            cb.type = "checkbox";
+            cb.checked = selectedSet.has(v);
+            cb.id = "flt_" + name + "_" + col + "_" + v;
+            cb.value = v;
+
+            const lbl = document.createElement("label");
+            lbl.textContent = v;
+            lbl.htmlFor = cb.id;
+
+            optionDiv.appendChild(cb);
+            optionDiv.appendChild(lbl);
+            optionsDiv.appendChild(optionDiv);
+            checkboxes.push({ cb, optionDiv, text: v.toLowerCase() });
+
+            cb.addEventListener("change", function() {
+                if (!filterState[name][col]) filterState[name][col] = new Set();
+                if (this.checked) {
+                    filterState[name][col].add(v);
+                } else {
+                    filterState[name][col].delete(v);
+                }
+                renderTable(name, columns, data);
+            });
         });
 
-        select.addEventListener("change", function() {
-            filterState[name][col] = this.value;
+        dropdown.appendChild(optionsDiv);
+
+        /* Search filtering */
+        searchInput.addEventListener("input", function() {
+            const term = this.value.toLowerCase();
+            checkboxes.forEach(({ optionDiv, text }) => {
+                optionDiv.classList.toggle("hidden", term !== "" && !text.includes(term));
+            });
+        });
+
+        /* Select All */
+        selectAllBtn.addEventListener("click", function(e) {
+            e.stopPropagation();
+            filterState[name][col] = new Set(vals);
             renderTable(name, columns, data);
         });
-        th.appendChild(select);
+
+        /* Clear Filter */
+        clearBtn.addEventListener("click", function(e) {
+            e.stopPropagation();
+            filterState[name][col] = new Set();
+            renderTable(name, columns, data);
+        });
+
+        /* Toggle dropdown */
+        trigger.addEventListener("click", function(e) {
+            e.stopPropagation();
+            const isOpen = dropdown.classList.contains("open");
+            closeAllFilterDropdowns();
+            if (!isOpen) {
+                dropdown.classList.add("open");
+                searchInput.value = "";
+                searchInput.dispatchEvent(new Event("input"));
+                setTimeout(() => searchInput.focus(), 0);
+            }
+        });
+
+        /* Prevent clicks inside dropdown from closing it */
+        dropdown.addEventListener("click", function(e) {
+            e.stopPropagation();
+        });
+
+        th.appendChild(trigger);
+        th.appendChild(dropdown);
         filterRow.appendChild(th);
     });
 
@@ -756,6 +961,14 @@ function formatNum(v) {
     if (typeof v !== "number") return v;
     return Number.isInteger(v) ? v.toString() : v.toFixed(2);
 }
+
+/* ====================================================================== */
+/* Filter dropdown helpers                                                */
+/* ====================================================================== */
+function closeAllFilterDropdowns() {
+    document.querySelectorAll(".filter-dropdown.open").forEach(d => d.classList.remove("open"));
+}
+document.addEventListener("click", closeAllFilterDropdowns);
 
 /* ====================================================================== */
 /* Sorting                                                                */
