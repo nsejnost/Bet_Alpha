@@ -770,8 +770,8 @@
             .stats-bar .stat-item { font-size: .72rem; }
             .stats-bar .updated-at { margin-left: 0; width: 100%; }
             .threshold-section { padding: 12px 12px 0; overflow-x: auto; }
-            .tab-bar { padding: 0 8px; overflow-x: auto; }
-            .tab-btn { padding: 10px 14px; font-size: .84rem; white-space: nowrap; }
+            .tab-bar { padding: 0 8px; flex-wrap: wrap; }
+            .tab-btn { padding: 8px 12px; font-size: .8rem; white-space: nowrap; }
             .table-wrapper { padding: 12px 8px; }
             td, table.data-table thead th { padding: 6px 8px; font-size: .75rem; }
             .modal-box { width: 98vw; padding: 16px; }
@@ -1570,7 +1570,7 @@ function renderTable(name, columns, data, bodyOnly) {
     applyStickyColumns(name + "Table");
 
     /* Also render card view for mobile */
-    renderCards(name);
+    try { renderCards(name); } catch(e) { console.warn("renderCards error:", e); }
 }
 
 /* ====================================================================== */
