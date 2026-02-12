@@ -265,6 +265,26 @@ def get_unscored_event_ids() -> list[str]:
         conn.close()
 
 
+def get_unscored_games() -> list[dict]:
+    """Return unscored games with team info for Barttorvik score matching."""
+    conn = _get_conn()
+    try:
+        rows = conn.execute(
+            """SELECT DISTINCT s.event_id, s.commence_time,
+                              s.away_team, s.home_team
+               FROM snapshots s
+               LEFT JOIN results r ON s.event_id = r.event_id
+               WHERE r.id IS NULL"""
+        ).fetchall()
+        return [
+            {"event_id": r[0], "commence_time": r[1],
+             "away_team": r[2], "home_team": r[3]}
+            for r in rows
+        ]
+    finally:
+        conn.close()
+
+
 def get_accuracy_data() -> list[dict]:
     """Return joined results + locked snapshot data for accuracy analysis."""
     conn = _get_conn()
