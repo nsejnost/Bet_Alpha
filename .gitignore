@@ -4,3 +4,4 @@ CBB_Model_Inputs_fixed.xlsx
 *.csv
 !team_name_mapping.csv
 CbbMarketVsModel.xlsx
+*.db
