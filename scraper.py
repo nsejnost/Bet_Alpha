@@ -504,19 +504,15 @@ def scrape_barttorvik() -> pd.DataFrame:
             col_renames[col] = "Matchup"
         elif cl == "t-rank line" and col != "T-Rank Line":
             col_renames[col] = "T-Rank Line"
-        elif cl == "result" and col != "Result":
-            col_renames[col] = "Result"
     if col_renames:
         b = b.rename(columns=col_renames)
 
     # When JSON returns an array of arrays (no column headers), columns are
-    # integer-indexed.  Auto-detect Matchup, T-Rank Line, Date, and Result
-    # by content.
+    # integer-indexed.  Auto-detect Matchup, T-Rank Line, and Date by content.
     if "Matchup" not in b.columns or "T-Rank Line" not in b.columns:
         matchup_col = None
         trank_col = None
         date_col = None
-        result_col = None
         # Matchup pattern: "250 Team at 197 Team" — require a leading rank
         # number to avoid false positives on conference columns like "Horz at Horz".
         matchup_re = re.compile(r"\d+\s+.+\s+(?:at|vs)\s+\d+\s+")
@@ -524,9 +520,7 @@ def scrape_barttorvik() -> pd.DataFrame:
         trank_re = re.compile(r".+\s+-?\d+\.?\d*,?\s+\d+-\d+\s+\(\d+%\)")
         # Date: "M/D/YY" or "MM/DD/YYYY"
         date_re = re.compile(r"\d{1,2}/\d{1,2}/\d{2,4}")
-        # Result: "Team Name, 73-61" (winner + final score, no percentage)
-        result_re = re.compile(r".+,\s+\d+-\d+")
-        for _, sample_row in b.head(min(200, len(b))).iterrows():
+        for _, sample_row in b.head(min(50, len(b))).iterrows():
             for col in b.columns:
                 val = str(sample_row[col]).strip()
                 if matchup_col is None and matchup_re.search(val):
@@ -535,9 +529,7 @@ def scrape_barttorvik() -> pd.DataFrame:
                     trank_col = col
                 if date_col is None and date_re.fullmatch(val):
                     date_col = col
-                if result_col is None and result_re.fullmatch(val):
-                    result_col = col
-            if matchup_col is not None and trank_col is not None and result_col is not None:
+            if matchup_col is not None and trank_col is not None:
                 break
         renames = {}
         if matchup_col is not None and "Matchup" not in b.columns:
@@ -546,8 +538,6 @@ def scrape_barttorvik() -> pd.DataFrame:
             renames[trank_col] = "T-Rank Line"
         if date_col is not None and "Date" not in b.columns:
             renames[date_col] = "Date"
-        if result_col is not None and "Result" not in b.columns:
-            renames[result_col] = "Result"
         if renames:
             b = b.rename(columns=renames)
             print(f"[Barttorvik] Auto-detected columns: {renames}")
@@ -589,7 +579,6 @@ def scrape_barttorvik() -> pd.DataFrame:
         return ""
 
     has_date_col = "Date" in b.columns
-    has_result_col = "Result" in b.columns
 
     rows = []
     for _, row in b.iterrows():
@@ -681,37 +670,6 @@ def scrape_barttorvik() -> pd.DataFrame:
             if has_date_col:
                 game_date = _parse_bart_date(str(row.get("Date", "")))
 
-            # Parse actual scores from Result column (e.g. "Team, 73-61")
-            actual_away_score = None
-            actual_home_score = None
-            if has_result_col:
-                result_raw = str(row.get("Result", "")).strip()
-                if result_raw and result_raw != "nan":
-                    rm = re.match(r"(.+),\s+(\d+)-(\d+)$", result_raw)
-                    if rm:
-                        winner_name = rm.group(1).strip()
-                        winner_score = int(rm.group(2))
-                        loser_score = int(rm.group(3))
-                        winner_lower = winner_name.lower().strip()
-                        # Compare with raw Barttorvik names first (most reliable)
-                        if winner_lower == home_lower:
-                            actual_home_score = winner_score
-                            actual_away_score = loser_score
-                        elif winner_lower == away_lower:
-                            actual_away_score = winner_score
-                            actual_home_score = loser_score
-                        else:
-                            # Fallback: normalized comparison
-                            winner_norm = BARTTORVIK_TO_NORMALIZED_MAP.get(
-                                winner_lower, norm_team(winner_name)
-                            )
-                            if winner_norm == home_normalized:
-                                actual_home_score = winner_score
-                                actual_away_score = loser_score
-                            elif winner_norm == away_normalized:
-                                actual_away_score = winner_score
-                                actual_home_score = loser_score
-
             row_data = {
                 "Away_orig": away_team,
                 "Home_orig": home_team,
@@ -721,8 +679,6 @@ def scrape_barttorvik() -> pd.DataFrame:
                 "BarttorvikTotal": round(total, 2),
                 "BarttorvikSpread": round(signed_spread, 2),
                 "BarttorvikDate": game_date,
-                "BartActualAwayScore": actual_away_score,
-                "BartActualHomeScore": actual_home_score,
             }
             rows.append(row_data)
 

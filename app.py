@@ -44,7 +44,6 @@ from main import (
 )
 
 from scraper import scrape_kenpom, scrape_haslametrics, scrape_barttorvik
-from db import store_snapshots, get_history, get_accuracy_data, store_results, get_unscored_games, purge_future_results
 
 try:
     from zoneinfo import ZoneInfo
@@ -52,11 +51,6 @@ except ImportError:
     ZoneInfo = None
 
 app = Flask(__name__)
-
-# Clean up any results that were incorrectly stored for future games
-_purged = purge_future_results()
-if _purged:
-    print(f"[DB] Purged {_purged} incorrectly-scored future game(s) from results")
 
 # ---------------------------------------------------------------------------
 # Basic auth — set APP_USERNAME and APP_PASSWORD in Render env vars
@@ -200,7 +194,6 @@ def run_pipeline():
                 game_time = ""
 
             out: dict = {
-                "EventID": g.get("EventID", ""),
                 "Game_Date": game_date,
                 "Game_Time": game_time,
                 "TeamA": g["TeamA_raw"],
@@ -479,16 +472,15 @@ def run_pipeline():
         for c in df.columns
         if c not in ["CommenceTimeUTC_dt", "CommenceTimeET_dt"]
     ]
-    # Include EventID so the frontend can request per-game history
-    totals_cols = ["EventID"] + [c for c in TOTALS_OUTPUT_COLUMNS if c in available_cols]
-    spreads_cols = ["EventID"] + [c for c in SPREADS_OUTPUT_COLUMNS if c in available_cols]
+    totals_cols = [c for c in TOTALS_OUTPUT_COLUMNS if c in available_cols]
+    spreads_cols = [c for c in SPREADS_OUTPUT_COLUMNS if c in available_cols]
 
     totals_df = df[totals_cols].copy().replace([np.inf, -np.inf], np.nan)
     spreads_df = df[spreads_cols].copy().replace([np.inf, -np.inf], np.nan)
 
     stats["total_games"] = int(len(df))
     stats["unmatched_kenpom"] = int(len(unmatched))
-    return df, totals_df, spreads_df, stats, unmatched, barttorvik
+    return totals_df, spreads_df, stats, unmatched
 
 
 # ---------------------------------------------------------------------------
@@ -546,39 +538,7 @@ def api_data():
         return _json_response(_cache["payload"])
 
     try:
-        full_df, totals_df, spreads_df, stats, unmatched, barttorvik_df = run_pipeline()
-
-        # ── Store snapshots (deduplicated by content hash) ─────────
-        try:
-            snap_rows = []
-            for _, r in full_df.iterrows():
-                snap_rows.append({
-                    "event_id":         r.get("EventID", ""),
-                    "commence_time":    r.get("CommenceTimeUTC", ""),
-                    "away_team":        r.get("TeamA", ""),
-                    "home_team":        r.get("TeamB", ""),
-                    "closing_total":    r.get("ClosingTotal"),
-                    "closing_spread":   r.get("ClosingSpread"),
-                    "kenpom_total":     r.get("KenPomTotal"),
-                    "kenpom_spread":    r.get("KenPomSpread"),
-                    "hasla_total":      r.get("HaslaTotal"),
-                    "hasla_spread":     r.get("HaslaSpread"),
-                    "bart_total":       r.get("BarttorvikTotal"),
-                    "bart_spread":      r.get("BarttorvikSpread"),
-                    "mkt_minus_kp_total":  r.get("MarketMinusKenPom"),
-                    "mkt_minus_kp_spread": r.get("MarketMinusKenPomSpread"),
-                })
-            new_snaps = store_snapshots(snap_rows)
-            print(f"[DB] Stored {new_snaps} new snapshot(s)")
-        except Exception as snap_err:
-            print(f"[DB] Snapshot storage failed (non-fatal): {snap_err}")
-
-        # ── Score completed games using Barttorvik actual results
-        #    (no extra API call — data already in the scrape) ───
-        try:
-            _store_scores_from_barttorvik(barttorvik_df)
-        except Exception as score_err:
-            print(f"[DB] Barttorvik score storage failed (non-fatal): {score_err}")
+        totals_df, spreads_df, stats, unmatched = run_pipeline()
 
         # Convert to records then scrub NaN/Inf → None for valid JSON
         totals_records = _sanitize_records(totals_df.to_dict(orient="records"))
@@ -617,201 +577,6 @@ def api_data():
             },
             status=500,
         )
-
-
-# ---------------------------------------------------------------------------
-# Score storage — extract final scores from Barttorvik data (free, no API)
-# ---------------------------------------------------------------------------
-
-
-def _store_scores_from_barttorvik(barttorvik_df):
-    """Score unscored games using actual results already in the Barttorvik scrape.
-
-    Barttorvik's season JSON includes a Result field for completed games
-    (e.g. "East Tennessee St., 73-61").  scrape_barttorvik() parses these
-    into BartActualAwayScore / BartActualHomeScore columns.  This function
-    matches those to previously-snapshotted games and persists the results
-    — eliminating the need for a paid Odds API /scores call.
-    """
-    import pandas as pd
-    from main import norm_team, _normalize_lookup_key
-
-    if barttorvik_df.empty or "BartActualAwayScore" not in barttorvik_df.columns:
-        return
-
-    # Filter to Barttorvik rows that have actual final scores
-    scored = barttorvik_df[
-        barttorvik_df["BartActualAwayScore"].notna()
-        & barttorvik_df["BartActualHomeScore"].notna()
-    ].copy()
-    if scored.empty:
-        return
-
-    unscored = get_unscored_games()
-    if not unscored:
-        return
-
-    # Pre-compute normalized matchup keys for scored Barttorvik games
-    scored["_norm_key"] = scored["MatchupKey_NoDate"].apply(
-        lambda x: "|".join(
-            sorted([_normalize_lookup_key(p) for p in x.split("|")])
-        )
-    )
-
-    # Timezone for date comparison
-    et_tz = None
-    if ZoneInfo is not None:
-        try:
-            et_tz = ZoneInfo("America/New_York")
-        except Exception:
-            pass
-
-    to_store = []
-    for game in unscored:
-        away_norm = _normalize_lookup_key(norm_team(game["away_team"]))
-        home_norm = _normalize_lookup_key(norm_team(game["home_team"]))
-        game_key = "|".join(sorted([away_norm, home_norm]))
-
-        matches = scored[scored["_norm_key"] == game_key]
-        if matches.empty:
-            continue
-
-        # Prefer date-matched row to avoid confusing rematches
-        game_date = ""
-        try:
-            ct = game.get("commence_time", "")
-            dt = datetime.fromisoformat(ct.replace("Z", "+00:00"))
-            if et_tz:
-                dt = dt.astimezone(et_tz)
-            game_date = dt.strftime("%Y-%m-%d")
-        except Exception:
-            pass
-
-        bart_row = None
-        if game_date and "BarttorvikDate" in matches.columns:
-            date_matches = matches[matches["BarttorvikDate"] == game_date]
-            if not date_matches.empty:
-                bart_row = date_matches.iloc[0]
-
-        # Only store scores when we have an exact date match to avoid
-        # assigning an old game's score to a future rematch
-        if bart_row is None:
-            continue
-
-        # Align Barttorvik away/home with Odds API away/home
-        bart_away_norm = _normalize_lookup_key(str(bart_row["Away_normalized"]))
-        actual_away = int(bart_row["BartActualAwayScore"])
-        actual_home = int(bart_row["BartActualHomeScore"])
-
-        if bart_away_norm == away_norm:
-            away_score, home_score = actual_away, actual_home
-        else:
-            away_score, home_score = actual_home, actual_away
-
-        to_store.append({
-            "event_id": game["event_id"],
-            "commence_time": game.get("commence_time", ""),
-            "away_team": game["away_team"],
-            "home_team": game["home_team"],
-            "away_score": away_score,
-            "home_score": home_score,
-        })
-
-    if to_store:
-        n = store_results(to_store)
-        print(f"[Scores] Stored {n} new result(s) from Barttorvik data")
-
-
-# ---------------------------------------------------------------------------
-# API: per-game history (Feature 1)
-# ---------------------------------------------------------------------------
-
-@app.route("/api/history")
-@require_auth
-def api_history():
-    """Return all snapshots for a single game."""
-    event_id = request.args.get("event_id", "").strip()
-    if not event_id:
-        return _json_response({"error": "event_id required"}, 400)
-    rows = get_history(event_id)
-    return _json_response({"event_id": event_id, "snapshots": rows})
-
-
-# ---------------------------------------------------------------------------
-# API: model accuracy (Feature 2)
-# ---------------------------------------------------------------------------
-
-@app.route("/api/accuracy")
-@require_auth
-def api_accuracy():
-    """Return per-game accuracy data + aggregate stats."""
-    rows = get_accuracy_data()
-
-    # Compute aggregate accuracy metrics
-    agg = _compute_accuracy_agg(rows)
-
-    return _json_response({
-        "games": _sanitize_records(rows),
-        "aggregate": agg,
-        "total_scored": len(rows),
-    })
-
-
-def _compute_accuracy_agg(rows: list[dict]) -> dict:
-    """Compute aggregate accuracy metrics from results + locked snapshots."""
-    models = {
-        "market":  {"total_key": "closing_total",  "spread_key": "closing_spread"},
-        "kenpom":  {"total_key": "kenpom_total",    "spread_key": "kenpom_spread"},
-        "hasla":   {"total_key": "hasla_total",     "spread_key": "hasla_spread"},
-        "bart":    {"total_key": "bart_total",      "spread_key": "bart_spread"},
-    }
-
-    agg = {}
-    for model_name, keys in models.items():
-        total_errors = []
-        spread_errors = []
-        ou_correct = 0
-        ou_total = 0
-        ats_correct = 0
-        ats_total = 0
-
-        for r in rows:
-            actual_total = r.get("actual_total")
-            actual_margin = r.get("actual_home_margin")
-            pred_total = r.get(keys["total_key"])
-            pred_spread = r.get(keys["spread_key"])
-
-            # Total accuracy (O/U)
-            if pred_total is not None and actual_total is not None:
-                err = abs(actual_total - pred_total)
-                total_errors.append(err)
-                # O/U hit: did the actual go over/under the predicted line?
-                if actual_total != pred_total:
-                    ou_total += 1
-                    if actual_total > pred_total:
-                        ou_correct += 1  # over hit
-                    else:
-                        ou_correct += 0  # under hit — counted on opposite side
-                    # Actually: was the model's implied over/under correct?
-                    # For market line: actual > line means Over hit
-                    # We track both sides fairly — just count if model was on correct side
-                    # Simpler: just track MAE; for hit rate, we need a "bet direction"
-
-            # Spread accuracy (ATS)
-            if pred_spread is not None and actual_margin is not None:
-                err = abs(actual_margin - pred_spread)
-                spread_errors.append(err)
-
-        n_total = len(total_errors)
-        n_spread = len(spread_errors)
-        agg[model_name] = {
-            "total_mae": round(sum(total_errors) / n_total, 2) if n_total else None,
-            "total_n": n_total,
-            "spread_mae": round(sum(spread_errors) / n_spread, 2) if n_spread else None,
-            "spread_n": n_spread,
-        }
-
-    return agg
 
 
 if __name__ == "__main__":

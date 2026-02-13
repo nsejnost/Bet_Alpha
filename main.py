@@ -2317,7 +2317,6 @@ def build_market_df_from_odds_api(payload: list[dict]) -> pd.DataFrame:
     """Build market DataFrame from Odds API payload."""
     rows = []
     for event in payload:
-        event_id = event.get("id", "")
         team_a = event.get("away_team", "")
         team_b = event.get("home_team", "")
         commence = event.get("commence_time", "")
@@ -2359,7 +2358,6 @@ def build_market_df_from_odds_api(payload: list[dict]) -> pd.DataFrame:
                     market_favored_team = "PICK"
 
         rows.append({
-            "EventID": event_id,
             "TeamA_raw": team_a,
             "TeamB_raw": team_b,
             "TeamA_key": norm_team(team_a),
