@@ -317,6 +317,19 @@ def get_accuracy_data() -> list[dict]:
         conn.close()
 
 
+def purge_future_results() -> int:
+    """Delete results whose commence_time is in the future (bad date matches)."""
+    now = datetime.now(timezone.utc).isoformat()
+    conn = _get_conn()
+    try:
+        conn.execute("DELETE FROM results WHERE commence_time > ?", (now,))
+        deleted = conn.execute("SELECT changes()").fetchone()[0]
+        conn.commit()
+        return deleted
+    finally:
+        conn.close()
+
+
 def _to_real(v):
     """Convert a value to float for SQLite, mapping NaN/None → None."""
     if v is None:

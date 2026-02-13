@@ -44,7 +44,7 @@ from main import (
 )
 
 from scraper import scrape_kenpom, scrape_haslametrics, scrape_barttorvik
-from db import store_snapshots, get_history, get_accuracy_data, store_results, get_unscored_games
+from db import store_snapshots, get_history, get_accuracy_data, store_results, get_unscored_games, purge_future_results
 
 try:
     from zoneinfo import ZoneInfo
@@ -52,6 +52,11 @@ except ImportError:
     ZoneInfo = None
 
 app = Flask(__name__)
+
+# Clean up any results that were incorrectly stored for future games
+_purged = purge_future_results()
+if _purged:
+    print(f"[DB] Purged {_purged} incorrectly-scored future game(s) from results")
 
 # ---------------------------------------------------------------------------
 # Basic auth — set APP_USERNAME and APP_PASSWORD in Render env vars
@@ -688,8 +693,10 @@ def _store_scores_from_barttorvik(barttorvik_df):
             if not date_matches.empty:
                 bart_row = date_matches.iloc[0]
 
+        # Only store scores when we have an exact date match to avoid
+        # assigning an old game's score to a future rematch
         if bart_row is None:
-            bart_row = matches.iloc[-1]
+            continue
 
         # Align Barttorvik away/home with Odds API away/home
         bart_away_norm = _normalize_lookup_key(str(bart_row["Away_normalized"]))
