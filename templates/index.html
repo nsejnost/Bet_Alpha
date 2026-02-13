@@ -613,51 +613,63 @@
         /* ------------------------------------------------------------------ */
         /* Accuracy tab                                                        */
         /* ------------------------------------------------------------------ */
-        .accuracy-wrapper { padding: 20px 28px; }
+        .accuracy-wrapper { padding: 0 28px 28px; }
         .accuracy-summary {
             display: flex;
-            gap: 16px;
+            gap: 14px;
             flex-wrap: wrap;
-            margin-bottom: 20px;
+            margin-bottom: 18px;
+            padding: 16px 0 0;
         }
         .accuracy-card {
             background: #fff;
             border-radius: 8px;
             box-shadow: 0 1px 4px rgba(0,0,0,.08);
-            padding: 16px 20px;
-            min-width: 160px;
+            padding: 14px 16px;
+            min-width: 180px;
             flex: 1;
         }
         .accuracy-card h3 {
             font-size: .82rem;
             color: #888;
-            margin-bottom: 8px;
+            margin-bottom: 10px;
             font-weight: 600;
             text-transform: uppercase;
             letter-spacing: .5px;
         }
-        .accuracy-card .mae-val {
-            font-size: 1.6rem;
+        .accuracy-card .acc-metrics {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px 16px;
+        }
+        .accuracy-card .acc-metric {
+            text-align: center;
+        }
+        .accuracy-card .acc-metric-val {
+            font-size: 1.25rem;
             font-weight: 700;
             color: #1a1a2e;
         }
-        .accuracy-card .mae-label {
-            font-size: .72rem;
+        .accuracy-card .acc-metric-val.hit-good { color: #155724; }
+        .accuracy-card .acc-metric-val.hit-bad  { color: #c0392b; }
+        .accuracy-card .acc-metric-label {
+            font-size: .68rem;
             color: #888;
-            margin-top: 2px;
+            margin-top: 1px;
         }
-        .accuracy-card .mae-row {
-            display: flex;
-            justify-content: space-between;
-            gap: 16px;
-        }
-        .accuracy-card .mae-block { text-align: center; }
         .accuracy-empty {
             text-align: center;
             padding: 60px 20px;
             color: #888;
             font-size: .92rem;
         }
+        .accuracy-table-wrap {
+            overflow-x: auto;
+        }
+        /* O/U and ATS indicator cells */
+        td.ou-hit, td.ats-hit   { background: #d4edda; color: #155724; font-weight: 700; text-align: center; }
+        td.ou-miss, td.ats-miss { background: #f8d7da; color: #721c24; font-weight: 700; text-align: center; }
+        td.ou-push, td.ats-push { background: #fff3cd; color: #856404; font-weight: 600; text-align: center; }
 
         @media (max-width: 768px) {
             .header { padding: 14px 16px; flex-direction: column; align-items: flex-start; }
@@ -830,9 +842,12 @@
                 No scored games yet. Accuracy data will appear once games are completed and scores are fetched.
             </div>
             <div id="accuracySummary" class="accuracy-summary" style="display:none;"></div>
-            <div id="accuracyTableWrap" style="display:none;">
+            <div class="accuracy-table-wrap" id="accuracyTableWrap" style="display:none;">
                 <table class="data-table" id="accuracyTable">
-                    <thead><tr id="accuracyHead"></tr></thead>
+                    <thead>
+                        <tr id="accuracyHead"></tr>
+                        <tr class="filter-row" id="accuracyFilterRow"></tr>
+                    </thead>
                     <tbody id="accuracyBody"></tbody>
                 </table>
             </div>
@@ -870,9 +885,10 @@
 /* ====================================================================== */
 let rawData = null;
 let currentTab = "totals";
-let sortState = { totals: { col: null, asc: true }, spreads: { col: null, asc: true } };
-let filterState = { totals: {}, spreads: {} };
+let sortState = { totals: { col: null, asc: true }, spreads: { col: null, asc: true }, accuracy: { col: null, asc: true } };
+let filterState = { totals: {}, spreads: {}, accuracy: {} };
 let autoRefreshTimer = null;
+let accuracyRawGames = [];   /* raw per-game accuracy rows from API */
 
 /* ====================================================================== */
 /* Column display names                                                   */
@@ -1054,6 +1070,10 @@ function recomputePass() {
     if (!rawData) return;
     renderTable("totals", rawData.totals.columns, rawData.totals.data);
     renderTable("spreads", rawData.spreads.columns, rawData.spreads.data);
+    /* Re-render accuracy if loaded (weights/thresholds affect Wtd Avg & pass) */
+    if (accuracyLoaded && accuracyRawGames.length > 0) {
+        renderAccuracyTable();
+    }
     switchTab(currentTab);
 }
 
@@ -1082,6 +1102,8 @@ async function fetchData() {
 
         rawData = json;
         accuracyLoaded = false; /* force re-fetch on next Accuracy tab view */
+        accuracyRawGames = [];
+        filterState.accuracy = {};
         document.getElementById("csvBtn").disabled = false;
         document.getElementById("clearFiltersBtn").disabled = false;
         updateStats(json.stats, json.updated_at);
@@ -1548,12 +1570,16 @@ document.addEventListener("click", closeAllFilterDropdowns);
 
 /* Clear all filters across all tabs and re-render the current tab */
 function clearAllFilters() {
-    filterState = { totals: {}, spreads: {} };
+    filterState = { totals: {}, spreads: {}, accuracy: {} };
     closeAllFilterDropdowns();
     removeOrphanedDropdowns();
-    if (!rawData) return;
-    renderTable("totals", rawData.totals.columns, rawData.totals.data);
-    renderTable("spreads", rawData.spreads.columns, rawData.spreads.data);
+    if (rawData) {
+        renderTable("totals", rawData.totals.columns, rawData.totals.data);
+        renderTable("spreads", rawData.spreads.columns, rawData.spreads.data);
+    }
+    if (accuracyLoaded && accuracyRawGames.length > 0) {
+        renderAccuracyTable();
+    }
     switchTab(currentTab);
 }
 
@@ -1875,25 +1901,225 @@ function renderHistoryTable(snaps) {
 /* ====================================================================== */
 let accuracyLoaded = false;
 
+/* Column order for accuracy table */
+const ACC_COL_ORDER = [
+    /* Game info */
+    "commence_time", "away_team", "home_team", "away_score", "home_score",
+    /* Totals */
+    "actual_total", "closing_total", "kenpom_total", "hasla_total", "bart_total", "acc_wtd_avg_total",
+    /* O/U calls (model vs market) */
+    "ou_kenpom", "ou_hasla", "ou_bart", "ou_wtd_avg",
+    /* Spreads */
+    "actual_home_margin", "closing_spread", "kenpom_spread", "hasla_spread", "bart_spread", "acc_wtd_avg_spread",
+    /* ATS calls (model vs market) */
+    "ats_kenpom", "ats_hasla", "ats_bart", "ats_wtd_avg",
+    /* Pass columns */
+    "acc_kp_pass", "acc_hasla_pass", "acc_bart_pass", "acc_wtd_avg_pass", "acc_total_pass",
+];
+
+const ACC_COL_LABELS = {
+    commence_time: "Date", away_team: "Away", home_team: "Home",
+    away_score: "Away Pts", home_score: "Home Pts",
+    actual_total: "Total", closing_total: "Mkt Total",
+    kenpom_total: "KP Total", hasla_total: "Hasla Total",
+    bart_total: "Bart Total", acc_wtd_avg_total: "Wtd Avg Total",
+    ou_kenpom: "KP O/U", ou_hasla: "Hasla O/U", ou_bart: "Bart O/U", ou_wtd_avg: "WtdAvg O/U",
+    actual_home_margin: "Margin", closing_spread: "Mkt Spread",
+    kenpom_spread: "KP Spread", hasla_spread: "Hasla Spread",
+    bart_spread: "Bart Spread", acc_wtd_avg_spread: "Wtd Avg Spread",
+    ats_kenpom: "KP ATS", ats_hasla: "Hasla ATS", ats_bart: "Bart ATS", ats_wtd_avg: "WtdAvg ATS",
+    acc_kp_pass: "KP Pass", acc_hasla_pass: "Hasla Pass",
+    acc_bart_pass: "Bart Pass", acc_wtd_avg_pass: "WtdAvg Pass", acc_total_pass: "Total Pass",
+};
+
+const ACC_NUM_COLS = new Set([
+    "away_score", "home_score", "actual_total", "closing_total",
+    "kenpom_total", "hasla_total", "bart_total", "acc_wtd_avg_total",
+    "actual_home_margin", "closing_spread",
+    "kenpom_spread", "hasla_spread", "bart_spread", "acc_wtd_avg_spread",
+]);
+const ACC_TEAM_COLS = new Set(["away_team", "home_team"]);
+const ACC_PASS_COLS = new Set(["acc_kp_pass", "acc_hasla_pass", "acc_bart_pass", "acc_wtd_avg_pass", "acc_total_pass"]);
+const ACC_OU_COLS = new Set(["ou_kenpom", "ou_hasla", "ou_bart", "ou_wtd_avg"]);
+const ACC_ATS_COLS = new Set(["ats_kenpom", "ats_hasla", "ats_bart", "ats_wtd_avg"]);
+const ACC_COMPUTED_COLS = new Set([
+    "acc_wtd_avg_total", "acc_wtd_avg_spread",
+    "ou_kenpom", "ou_hasla", "ou_bart", "ou_wtd_avg",
+    "ats_kenpom", "ats_hasla", "ats_bart", "ats_wtd_avg",
+    "acc_kp_pass", "acc_hasla_pass", "acc_bart_pass", "acc_wtd_avg_pass", "acc_total_pass",
+]);
+
+/**
+ * Compute derived fields for one accuracy row.
+ * Uses the current weight / threshold inputs.
+ */
+function computeAccuracyFields(row) {
+    const w = getWeights();
+    const wValid = weightsValid();
+    const t = getThresholds();
+
+    const actual_total = row.actual_total;
+    const actual_margin = row.actual_home_margin;
+    const mkt_total = row.closing_total;
+    const mkt_spread = row.closing_spread;
+
+    /* Weighted average total & spread */
+    const kpT = row.kenpom_total, hsT = row.hasla_total, btT = row.bart_total;
+    const kpS = row.kenpom_spread, hsS = row.hasla_spread, btS = row.bart_spread;
+
+    let wtdAvgTotal = null, wtdAvgSpread = null;
+    if (wValid && isNum(kpT) && isNum(hsT) && isNum(btT)) {
+        wtdAvgTotal = (w.kp / 100) * kpT + (w.hasla / 100) * hsT + (w.bart / 100) * btT;
+    }
+    if (wValid && isNum(kpS) && isNum(hsS) && isNum(btS)) {
+        wtdAvgSpread = (w.kp / 100) * kpS + (w.hasla / 100) * hsS + (w.bart / 100) * btS;
+    }
+
+    /* O/U calls — model vs market total; hit if model & actual on same side */
+    function ouResult(modelTotal) {
+        if (!isNum(modelTotal) || !isNum(mkt_total) || !isNum(actual_total)) return null;
+        if (modelTotal === mkt_total) return null;           /* model matches market — no call */
+        if (actual_total === mkt_total) return "Push";       /* push */
+        const modelSaysOver = modelTotal > mkt_total;
+        const actualOver = actual_total > mkt_total;
+        return modelSaysOver === actualOver ? "Hit" : "Miss";
+    }
+
+    /* ATS calls — model vs market spread; hit if model & actual on same side */
+    function atsResult(modelSpread) {
+        if (!isNum(modelSpread) || !isNum(mkt_spread) || !isNum(actual_margin)) return null;
+        if (modelSpread === mkt_spread) return null;          /* model matches market — no call */
+        if (actual_margin === mkt_spread) return "Push";      /* push on spread (rare with .5) */
+        /* Convention: spread is from home perspective. Home covers if actual_margin > spread (home wins by more than expected).
+           Model picks home to cover if model_spread > mkt_spread (model thinks home margin is larger). */
+        const modelPicksHome = modelSpread > mkt_spread;
+        const homeCovers = actual_margin > mkt_spread;
+        return modelPicksHome === homeCovers ? "Hit" : "Miss";
+    }
+
+    /* Pass columns — identical logic to computeFields but using accuracy column names */
+    /* Totals diffs: market total minus model total */
+    const diffKpT   = isNum(mkt_total) && isNum(kpT) ? mkt_total - kpT : null;
+    const diffHsT   = isNum(mkt_total) && isNum(hsT) ? mkt_total - hsT : null;
+    const diffBtT   = isNum(mkt_total) && isNum(btT) ? mkt_total - btT : null;
+    const diffWtdT  = isNum(mkt_total) && isNum(wtdAvgTotal) ? mkt_total - wtdAvgTotal : null;
+    /* Spreads diffs: market spread + model spread (opposite conventions) */
+    const diffKpS   = isNum(mkt_spread) && isNum(kpS) ? mkt_spread + kpS : null;
+    const diffHsS   = isNum(mkt_spread) && isNum(hsS) ? mkt_spread + hsS : null;
+    const diffBtS   = isNum(mkt_spread) && isNum(btS) ? mkt_spread + btS : null;
+    const diffWtdS  = isNum(mkt_spread) && isNum(wtdAvgSpread) ? mkt_spread + wtdAvgSpread : null;
+
+    const kpPass     = isNum(diffKpT)   ? (Math.abs(diffKpT)   >= t.kp)     : false;
+    const haslaPass  = isNum(diffHsT)   ? (Math.abs(diffHsT)   >= t.hasla)  : false;
+    const bartPass   = isNum(diffBtT)   ? (Math.abs(diffBtT)   >= t.bart)   : false;
+    const wtdAvgPass = isNum(diffWtdT)  ? (Math.abs(diffWtdT)  >= t.wtdAvg) : false;
+
+    const yesCount = (kpPass ? 1 : 0) + (haslaPass ? 1 : 0) + (bartPass ? 1 : 0) + (wtdAvgPass ? 1 : 0);
+    const totalPass = yesCount >= t.total;
+
+    return {
+        acc_wtd_avg_total:  wtdAvgTotal !== null ? Math.round(wtdAvgTotal * 100) / 100 : null,
+        acc_wtd_avg_spread: wtdAvgSpread !== null ? Math.round(wtdAvgSpread * 100) / 100 : null,
+        ou_kenpom:  ouResult(kpT),
+        ou_hasla:   ouResult(hsT),
+        ou_bart:    ouResult(btT),
+        ou_wtd_avg: ouResult(wtdAvgTotal),
+        ats_kenpom:  atsResult(kpS),
+        ats_hasla:   atsResult(hsS),
+        ats_bart:    atsResult(btS),
+        ats_wtd_avg: atsResult(wtdAvgSpread),
+        acc_kp_pass:      kpPass     ? "Y" : "N",
+        acc_hasla_pass:   haslaPass  ? "Y" : "N",
+        acc_bart_pass:    bartPass   ? "Y" : "N",
+        acc_wtd_avg_pass: wtdAvgPass ? "Y" : "N",
+        acc_total_pass:   totalPass  ? "Y" : "N",
+    };
+}
+
+/**
+ * Compute dynamic summary stats from a filtered set of accuracy rows.
+ * Returns an object with one entry per model containing MAE + hit rates.
+ */
+function computeAccuracySummary(filteredGames) {
+    const models = [
+        { key: "market",  label: "Market",     totalKey: "closing_total",  spreadKey: "closing_spread",  ouKey: null,        atsKey: null },
+        { key: "kenpom",  label: "KenPom",     totalKey: "kenpom_total",   spreadKey: "kenpom_spread",   ouKey: "ou_kenpom", atsKey: "ats_kenpom" },
+        { key: "hasla",   label: "Hasla",      totalKey: "hasla_total",    spreadKey: "hasla_spread",    ouKey: "ou_hasla",  atsKey: "ats_hasla" },
+        { key: "bart",    label: "Barttorvik",  totalKey: "bart_total",     spreadKey: "bart_spread",     ouKey: "ou_bart",   atsKey: "ats_bart" },
+        { key: "wtd_avg", label: "Wtd Avg",    totalKey: "acc_wtd_avg_total", spreadKey: "acc_wtd_avg_spread", ouKey: "ou_wtd_avg", atsKey: "ats_wtd_avg" },
+    ];
+
+    const summary = {};
+    for (const m of models) {
+        let totalErrors = [], spreadErrors = [];
+        let ouHits = 0, ouTotal = 0, atsHits = 0, atsTotal = 0;
+
+        for (const row of filteredGames) {
+            const fields = computeAccuracyFields(row);
+            const predTotal  = ACC_COMPUTED_COLS.has(m.totalKey)  ? fields[m.totalKey]  : row[m.totalKey];
+            const predSpread = ACC_COMPUTED_COLS.has(m.spreadKey) ? fields[m.spreadKey] : row[m.spreadKey];
+            const actualTotal  = row.actual_total;
+            const actualMargin = row.actual_home_margin;
+
+            /* Total MAE */
+            if (isNum(predTotal) && isNum(actualTotal)) {
+                totalErrors.push(Math.abs(actualTotal - predTotal));
+            }
+            /* Spread MAE */
+            if (isNum(predSpread) && isNum(actualMargin)) {
+                spreadErrors.push(Math.abs(actualMargin - predSpread));
+            }
+            /* O/U hit rate (not for Market — it IS the line) */
+            if (m.ouKey) {
+                const ou = fields[m.ouKey];
+                if (ou === "Hit")  { ouHits++; ouTotal++; }
+                if (ou === "Miss") { ouTotal++; }
+                /* Push excluded from count */
+            }
+            /* ATS hit rate */
+            if (m.atsKey) {
+                const ats = fields[m.atsKey];
+                if (ats === "Hit")  { atsHits++; atsTotal++; }
+                if (ats === "Miss") { atsTotal++; }
+            }
+        }
+
+        const nT = totalErrors.length, nS = spreadErrors.length;
+        summary[m.key] = {
+            label: m.label,
+            total_mae:  nT ? (totalErrors.reduce((a, b) => a + b, 0) / nT) : null,
+            total_n:    nT,
+            spread_mae: nS ? (spreadErrors.reduce((a, b) => a + b, 0) / nS) : null,
+            spread_n:   nS,
+            ou_hits:    ouHits,
+            ou_total:   ouTotal,
+            ou_pct:     ouTotal > 0 ? (ouHits / ouTotal * 100) : null,
+            ats_hits:   atsHits,
+            ats_total:  atsTotal,
+            ats_pct:    atsTotal > 0 ? (atsHits / atsTotal * 100) : null,
+        };
+    }
+    return summary;
+}
+
 function loadAccuracyData() {
     if (accuracyLoaded) return;
     fetch("/api/accuracy")
         .then(r => r.json())
         .then(data => {
             accuracyLoaded = true;
-            renderAccuracy(data);
+            accuracyRawGames = data.games || [];
+            document.getElementById("clearFiltersBtn").disabled = false;
+            renderAccuracyTable();
         })
         .catch(err => {
             document.getElementById("accuracyEmpty").textContent = "Error loading accuracy data: " + err.message;
         });
 }
 
-function renderAccuracy(data) {
-    const games = data.games || [];
-    const agg = data.aggregate || {};
-    const total = data.total_scored || 0;
-
-    if (total === 0) {
+function renderAccuracyTable(bodyOnly) {
+    const games = accuracyRawGames;
+    if (!games || games.length === 0) {
         document.getElementById("accuracyEmpty").style.display = "block";
         document.getElementById("accuracySummary").style.display = "none";
         document.getElementById("accuracyTableWrap").style.display = "none";
@@ -1904,58 +2130,297 @@ function renderAccuracy(data) {
     document.getElementById("accuracySummary").style.display = "flex";
     document.getElementById("accuracyTableWrap").style.display = "block";
 
-    /* Summary cards */
+    const headRow   = document.getElementById("accuracyHead");
+    const filterRow = document.getElementById("accuracyFilterRow");
+    const tbody     = document.getElementById("accuracyBody");
+    const allCols   = ACC_COL_ORDER;
+    const name      = "accuracy";
+
+    /* Helper to get value for a column */
+    function accGetVal(row, col, fields) {
+        if (ACC_COMPUTED_COLS.has(col)) return fields[col];
+        return row[col];
+    }
+
+    /* Format date values */
+    function accFormatVal(col, v) {
+        if (col === "commence_time" && v) {
+            const d = new Date(v);
+            return (d.getMonth() + 1) + "/" + d.getDate() + "/" + d.getFullYear();
+        }
+        if (v === null || v === undefined) return "--";
+        if (typeof v === "number") return formatNum(v);
+        return String(v);
+    }
+
+    /* Apply sorting */
+    let displayData = [...games];
+    const ss = sortState[name];
+    if (ss.col) {
+        displayData.sort((a, b) => {
+            const fa = computeAccuracyFields(a), fb = computeAccuracyFields(b);
+            let va = accGetVal(a, ss.col, fa), vb = accGetVal(b, ss.col, fb);
+            /* Sort dates by raw ISO string */
+            if (ss.col === "commence_time") {
+                va = va || ""; vb = vb || "";
+                return ss.asc ? va.localeCompare(vb) : vb.localeCompare(va);
+            }
+            /* Sort O/U and ATS: Hit > Push > Miss > null */
+            if (ACC_OU_COLS.has(ss.col) || ACC_ATS_COLS.has(ss.col)) {
+                const order = { "Hit": 1, "Push": 2, "Miss": 3 };
+                va = order[va] || 4; vb = order[vb] || 4;
+            }
+            if (va === null || va === undefined) va = ss.asc ? Infinity : -Infinity;
+            if (vb === null || vb === undefined) vb = ss.asc ? Infinity : -Infinity;
+            if (typeof va === "string") return ss.asc ? va.localeCompare(vb) : vb.localeCompare(va);
+            return ss.asc ? va - vb : vb - va;
+        });
+    }
+
+    /* Build unique value sets for filter dropdowns (from ALL data) */
+    const uniqueVals = {};
+    allCols.forEach(col => {
+        const valSet = new Set();
+        games.forEach(row => {
+            const fields = computeAccuracyFields(row);
+            let val = accGetVal(row, col, fields);
+            val = accFormatVal(col, val);
+            valSet.add(val);
+        });
+        uniqueVals[col] = [...valSet].sort((a, b) => {
+            if (a === "--") return 1; if (b === "--") return -1;
+            const na = parseFloat(a), nb = parseFloat(b);
+            if (!isNaN(na) && !isNaN(nb)) return na - nb;
+            return a.localeCompare(b);
+        });
+    });
+
+    /* Apply filters */
+    const filters = filterState[name] || {};
+    displayData = displayData.filter(row => {
+        const fields = computeAccuracyFields(row);
+        for (const [col, selectedSet] of Object.entries(filters)) {
+            if (!selectedSet || selectedSet.size === 0) continue;
+            let val = accGetVal(row, col, fields);
+            val = accFormatVal(col, val);
+            if (!selectedSet.has(val)) return false;
+        }
+        return true;
+    });
+
+    /* ---- Summary cards (computed from FILTERED data) ---- */
     const summaryEl = document.getElementById("accuracySummary");
-    const modelNames = [
-        { key: "market", label: "Market" },
-        { key: "kenpom", label: "KenPom" },
-        { key: "hasla", label: "Hasla" },
-        { key: "bart", label: "Barttorvik" },
-    ];
-    summaryEl.innerHTML = modelNames.map(m => {
-        const d = agg[m.key] || {};
-        const tMae = d.total_mae !== null && d.total_mae !== undefined ? d.total_mae.toFixed(2) : "--";
-        const sMae = d.spread_mae !== null && d.spread_mae !== undefined ? d.spread_mae.toFixed(2) : "--";
-        const tN = d.total_n || 0;
-        const sN = d.spread_n || 0;
-        return '<div class="accuracy-card"><h3>' + escapeHtml(m.label) + '</h3>' +
-            '<div class="mae-row">' +
-            '<div class="mae-block"><div class="mae-val">' + tMae + '</div><div class="mae-label">Total MAE (' + tN + ' games)</div></div>' +
-            '<div class="mae-block"><div class="mae-val">' + sMae + '</div><div class="mae-label">Spread MAE (' + sN + ' games)</div></div>' +
-            '</div></div>';
+    const summary = computeAccuracySummary(displayData);
+    const modelOrder = ["market", "kenpom", "hasla", "bart", "wtd_avg"];
+    summaryEl.innerHTML = modelOrder.map(key => {
+        const s = summary[key];
+        const tMae = s.total_mae !== null ? s.total_mae.toFixed(2) : "--";
+        const sMae = s.spread_mae !== null ? s.spread_mae.toFixed(2) : "--";
+        const isMarket = key === "market";
+        const ouPct = s.ou_pct !== null ? s.ou_pct.toFixed(1) + "%" : "--";
+        const atsPct = s.ats_pct !== null ? s.ats_pct.toFixed(1) + "%" : "--";
+        const ouClass = s.ou_pct !== null ? (s.ou_pct >= 50 ? "hit-good" : "hit-bad") : "";
+        const atsClass = s.ats_pct !== null ? (s.ats_pct >= 50 ? "hit-good" : "hit-bad") : "";
+
+        let html = '<div class="accuracy-card"><h3>' + escapeHtml(s.label) + '</h3>';
+        html += '<div class="acc-metrics">';
+        html += '<div class="acc-metric"><div class="acc-metric-val">' + tMae + '</div><div class="acc-metric-label">Total MAE (' + s.total_n + ')</div></div>';
+        html += '<div class="acc-metric"><div class="acc-metric-val">' + sMae + '</div><div class="acc-metric-label">Spread MAE (' + s.spread_n + ')</div></div>';
+        if (!isMarket) {
+            html += '<div class="acc-metric"><div class="acc-metric-val ' + ouClass + '">' + ouPct + '</div><div class="acc-metric-label">O/U ' + s.ou_hits + '/' + s.ou_total + '</div></div>';
+            html += '<div class="acc-metric"><div class="acc-metric-val ' + atsClass + '">' + atsPct + '</div><div class="acc-metric-label">ATS ' + s.ats_hits + '/' + s.ats_total + '</div></div>';
+        }
+        html += '</div></div>';
+        return html;
     }).join("");
 
-    /* Per-game results table */
-    const head = document.getElementById("accuracyHead");
-    const body = document.getElementById("accuracyBody");
-    const cols = [
-        { key: "commence_time", label: "Date" },
-        { key: "away_team", label: "Away" },
-        { key: "home_team", label: "Home" },
-        { key: "away_score", label: "Away Pts" },
-        { key: "home_score", label: "Home Pts" },
-        { key: "actual_total", label: "Total" },
-        { key: "closing_total", label: "Mkt Line" },
-        { key: "kenpom_total", label: "KenPom" },
-        { key: "hasla_total", label: "Hasla" },
-        { key: "bart_total", label: "Bart" },
-    ];
-    head.innerHTML = cols.map(c => '<th style="text-align:' + (c.key.includes("team") || c.key === "commence_time" ? "left" : "right") + '">' + escapeHtml(c.label) + '</th>').join("");
-    body.innerHTML = games.map(g => {
-        return "<tr>" + cols.map(c => {
-            let v = g[c.key];
-            if (c.key === "commence_time" && v) {
-                const d = new Date(v);
-                v = (d.getMonth()+1) + "/" + d.getDate() + "/" + d.getFullYear();
-            } else if (v !== null && v !== undefined && typeof v === "number") {
-                v = Number.isInteger(v) ? v : v.toFixed(1);
-            } else if (v === null || v === undefined) {
-                v = "--";
+    if (!bodyOnly) {
+    /* ---- Header row ---- */
+    headRow.innerHTML = "";
+    allCols.forEach((col, idx) => {
+        const th = document.createElement("th");
+        th.dataset.col = col;
+        th.innerHTML = escapeHtml(ACC_COL_LABELS[col] || col) + ' <span class="sort-arrow"></span>';
+        th.style.textAlign = ACC_TEAM_COLS.has(col) || col === "commence_time" ? "left" : (ACC_OU_COLS.has(col) || ACC_ATS_COLS.has(col) || ACC_PASS_COLS.has(col) ? "center" : "right");
+        th.onclick = () => sortAccuracyByColumn(col);
+        if (ss.col === col) {
+            th.classList.add(ss.asc ? "sorted-asc" : "sorted-desc");
+        }
+        headRow.appendChild(th);
+    });
+
+    /* ---- Filter row ---- */
+    filterRow.innerHTML = "";
+    removeOrphanedDropdowns();
+    allCols.forEach(col => {
+        const th = document.createElement("th");
+        const selectedSet = filters[col] || new Set();
+        const vals = uniqueVals[col] || [];
+
+        const trigger = document.createElement("button");
+        trigger.className = "filter-trigger" + (selectedSet.size > 0 ? " active-filter" : "");
+        const triggerLabel = selectedSet.size === 0 ? "All"
+            : selectedSet.size === 1 ? [...selectedSet][0]
+            : selectedSet.size + " selected";
+        trigger.innerHTML = '<span>' + escapeHtml(triggerLabel) + '</span><span class="arrow">&#9662;</span>';
+
+        function updateTriggerLabel() {
+            const s = filterState[name][col];
+            const count = s ? s.size : 0;
+            const label = count === 0 ? "All" : count === 1 ? [...s][0] : count + " selected";
+            trigger.querySelector("span").textContent = label;
+            trigger.classList.toggle("active-filter", count > 0);
+        }
+
+        const dropdown = document.createElement("div");
+        dropdown.className = "filter-dropdown";
+
+        const searchInput = document.createElement("input");
+        searchInput.type = "text";
+        searchInput.className = "filter-search";
+        searchInput.placeholder = "Search\u2026";
+        dropdown.appendChild(searchInput);
+
+        const actionsDiv = document.createElement("div");
+        actionsDiv.className = "filter-actions";
+        const selectAllBtn = document.createElement("button");
+        selectAllBtn.className = "filter-action-btn";
+        selectAllBtn.textContent = "Select All";
+        actionsDiv.appendChild(selectAllBtn);
+        const clearBtn = document.createElement("button");
+        clearBtn.className = "filter-action-btn";
+        clearBtn.textContent = "Clear Filter";
+        actionsDiv.appendChild(clearBtn);
+        dropdown.appendChild(actionsDiv);
+
+        const optionsDiv = document.createElement("div");
+        optionsDiv.className = "filter-options";
+        const checkboxes = [];
+        vals.forEach(v => {
+            const optionDiv = document.createElement("div");
+            optionDiv.className = "filter-option";
+            const cb = document.createElement("input");
+            cb.type = "checkbox";
+            cb.checked = selectedSet.has(v);
+            cb.id = "flt_accuracy_" + col + "_" + v;
+            cb.value = v;
+            const lbl = document.createElement("label");
+            lbl.textContent = v;
+            lbl.htmlFor = cb.id;
+            optionDiv.appendChild(cb);
+            optionDiv.appendChild(lbl);
+            optionsDiv.appendChild(optionDiv);
+            checkboxes.push({ cb, optionDiv, text: v.toLowerCase() });
+
+            cb.addEventListener("change", function() {
+                if (!filterState[name][col]) filterState[name][col] = new Set();
+                if (this.checked) filterState[name][col].add(v);
+                else filterState[name][col].delete(v);
+                updateTriggerLabel();
+                renderAccuracyTable(true);
+            });
+        });
+        dropdown.appendChild(optionsDiv);
+
+        searchInput.addEventListener("input", function() {
+            const term = this.value.toLowerCase();
+            checkboxes.forEach(({ optionDiv, text }) => {
+                optionDiv.classList.toggle("hidden", term !== "" && !text.includes(term));
+            });
+        });
+        selectAllBtn.addEventListener("click", function(e) {
+            e.stopPropagation();
+            filterState[name][col] = new Set(vals);
+            checkboxes.forEach(({ cb }) => { cb.checked = true; });
+            updateTriggerLabel();
+            renderAccuracyTable(true);
+        });
+        clearBtn.addEventListener("click", function(e) {
+            e.stopPropagation();
+            filterState[name][col] = new Set();
+            checkboxes.forEach(({ cb }) => { cb.checked = false; });
+            updateTriggerLabel();
+            renderAccuracyTable(true);
+        });
+
+        trigger.addEventListener("click", function(e) {
+            e.stopPropagation();
+            const isOpen = dropdown.classList.contains("open");
+            closeAllFilterDropdowns();
+            if (!isOpen) {
+                if (!dropdown.parentElement || dropdown.parentElement !== document.body)
+                    document.body.appendChild(dropdown);
+                const rect = trigger.getBoundingClientRect();
+                dropdown.style.top = rect.bottom + "px";
+                dropdown.style.left = rect.left + "px";
+                dropdown.classList.add("open");
+                searchInput.value = "";
+                searchInput.dispatchEvent(new Event("input"));
+                setTimeout(() => searchInput.focus(), 0);
             }
-            const align = (c.key.includes("team") || c.key === "commence_time") ? "left" : "right";
-            return '<td style="text-align:' + align + '">' + escapeHtml(String(v)) + '</td>';
-        }).join("") + "</tr>";
-    }).join("");
+        });
+        dropdown.addEventListener("click", function(e) { e.stopPropagation(); });
+
+        th.appendChild(trigger);
+        filterRow.appendChild(th);
+    });
+    } /* end if (!bodyOnly) */
+
+    /* ---- Table body ---- */
+    tbody.innerHTML = "";
+    displayData.forEach(row => {
+        const tr = document.createElement("tr");
+        const fields = computeAccuracyFields(row);
+        const totalPassYes = fields.acc_total_pass === "Y";
+
+        allCols.forEach(col => {
+            const td = document.createElement("td");
+            let val = accGetVal(row, col, fields);
+
+            if (ACC_PASS_COLS.has(col)) {
+                td.textContent = val;
+                td.className = val === "Y" ? "pass-yes" : "pass-no";
+            } else if (ACC_OU_COLS.has(col)) {
+                td.textContent = val || "--";
+                td.className = val === "Hit" ? "ou-hit" : val === "Miss" ? "ou-miss" : val === "Push" ? "ou-push" : "";
+                if (!val) td.style.textAlign = "center";
+            } else if (ACC_ATS_COLS.has(col)) {
+                td.textContent = val || "--";
+                td.className = val === "Hit" ? "ats-hit" : val === "Miss" ? "ats-miss" : val === "Push" ? "ats-push" : "";
+                if (!val) td.style.textAlign = "center";
+            } else if (ACC_NUM_COLS.has(col)) {
+                const fv = accFormatVal(col, val);
+                td.textContent = fv;
+                td.className = "col-num";
+            } else if (ACC_TEAM_COLS.has(col)) {
+                td.textContent = val || "--";
+                td.className = "col-team";
+            } else if (col === "commence_time") {
+                td.textContent = accFormatVal(col, val);
+            } else {
+                td.textContent = accFormatVal(col, val);
+            }
+
+            if (totalPassYes && !ACC_PASS_COLS.has(col) && !ACC_OU_COLS.has(col) && !ACC_ATS_COLS.has(col)) {
+                td.classList.add("row-pass-green");
+            }
+            tr.appendChild(td);
+        });
+        tbody.appendChild(tr);
+    });
+
+    applyStickyColumns("accuracyTable");
+}
+
+function sortAccuracyByColumn(col) {
+    const ss = sortState.accuracy;
+    if (ss.col === col) {
+        ss.asc = !ss.asc;
+    } else {
+        ss.col = col;
+        ss.asc = true;
+    }
+    renderAccuracyTable();
 }
 
 /* ====================================================================== */
