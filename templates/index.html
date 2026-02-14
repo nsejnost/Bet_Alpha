@@ -393,41 +393,6 @@
         td.row-pass-green { background: #d4edda; }
 
         /* ------------------------------------------------------------------ */
-        /* Sticky first 4 columns (Date, Time, Away, Home)                    */
-        /* ------------------------------------------------------------------ */
-        table.data-table.has-sticky-cols th:nth-child(1),
-        table.data-table.has-sticky-cols td:nth-child(1) { position: sticky; left: var(--sticky-left-0, 0); }
-        table.data-table.has-sticky-cols th:nth-child(2),
-        table.data-table.has-sticky-cols td:nth-child(2) { position: sticky; left: var(--sticky-left-1, 0); }
-        table.data-table.has-sticky-cols th:nth-child(3),
-        table.data-table.has-sticky-cols td:nth-child(3) { position: sticky; left: var(--sticky-left-2, 0); }
-        table.data-table.has-sticky-cols th:nth-child(4),
-        table.data-table.has-sticky-cols td:nth-child(4) { position: sticky; left: var(--sticky-left-3, 0); }
-
-        /* Body sticky cells: opaque background so content doesn't bleed through */
-        table.data-table.has-sticky-cols td:nth-child(-n+4) {
-            background: #fff;
-            z-index: 1;
-        }
-        table.data-table.has-sticky-cols tbody tr:nth-child(even) td:nth-child(-n+4) {
-            background: #fafbfc;
-        }
-        table.data-table.has-sticky-cols tbody tr td.row-pass-green:nth-child(-n+4) {
-            background: #d4edda;
-        }
-
-        /* Header sticky cells: higher z-index (sticky in both directions) */
-        table.data-table.has-sticky-cols thead th:nth-child(-n+4) {
-            z-index: 4;
-        }
-
-        /* Subtle shadow on the last sticky column as a visual separator */
-        table.data-table.has-sticky-cols th:nth-child(4),
-        table.data-table.has-sticky-cols td:nth-child(4) {
-            box-shadow: 2px 0 4px rgba(0,0,0,.06);
-        }
-
-        /* ------------------------------------------------------------------ */
         /* Loading / Error states                                             */
         /* ------------------------------------------------------------------ */
         .loading-overlay {
@@ -1191,9 +1156,6 @@ function renderTable(name, columns, data, bodyOnly) {
         tbody.appendChild(tr);
     });
 
-    /* Recalculate sticky column positions after every render (column widths
-       can change when filters add/remove rows in auto table layout). */
-    applyStickyColumns(name + "Table");
 }
 
 /* ====================================================================== */
@@ -1335,31 +1297,6 @@ function switchTab(tab) {
     document.getElementById("totalsWrapper").hidden = (tab !== "totals");
     document.getElementById("spreadsWrapper").hidden = (tab !== "spreads");
     document.getElementById("unmatchedWrapper").hidden = (tab !== "unmatched");
-
-    /* Apply sticky columns after the active table becomes visible */
-    if (tab === "totals") applyStickyColumns("totalsTable");
-    else if (tab === "spreads") applyStickyColumns("spreadsTable");
-    else if (tab === "unmatched") applyStickyColumns("unmatchedTable");
-}
-
-/* ====================================================================== */
-/* Sticky columns — measure header widths and set CSS custom properties    */
-/* ====================================================================== */
-const STICKY_COL_COUNT = 4;
-
-function applyStickyColumns(tableId) {
-    const table = document.getElementById(tableId);
-    if (!table || !table.offsetParent) return;
-
-    const headerRow = table.querySelector("thead tr:first-child");
-    if (!headerRow || headerRow.children.length < STICKY_COL_COUNT) return;
-
-    let cumLeft = 0;
-    for (let i = 0; i < STICKY_COL_COUNT; i++) {
-        table.style.setProperty("--sticky-left-" + i, cumLeft + "px");
-        cumLeft += headerRow.children[i].getBoundingClientRect().width;
-    }
-    table.classList.add("has-sticky-cols");
 }
 
 /* ====================================================================== */

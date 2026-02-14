@@ -216,6 +216,9 @@ MASCOT_WORDS = [
     "seahawks", "sharks", "tommies", "trailblazers", "gauchos",
     # Mascots from 2026-02-13 unmatched games
     "golden griffins", "big red", "big green", "broncs",
+    # Mascots from 2026-02-14 unmatched games
+    "ducks", "golden lions", "delta devils", "bearkats", "vaqueros",
+    "hoyas", "gamecocks",
 ]
 
 # =========================
@@ -864,6 +867,13 @@ NAME_MAP = {
 
     # Entries from 2026-02-13 unmatched games
     "loyola": "loyola chicago",
+
+    # Entries from 2026-02-14 unmatched games
+    "n c state": "nc state",
+    "texas a&m cc": "texas a&m corpus christi",
+    "se louisiana": "southeastern louisiana",
+    "miss valley st": "mississippi valley st",
+    "nicholls st": "nicholls",
 }
 
 # =========================
